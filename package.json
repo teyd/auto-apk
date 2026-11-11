@@ -17,7 +17,8 @@
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "test": "bun test",
-    "prepare": "effect-tsgo patch --typescript --oxlint"
+    "prepare": "effect-tsgo patch --typescript --oxlint",
+    "env:codegen": "INFISICAL_PROJECT_ID=placeholder INFISICAL_IDENTITY_ID=placeholder varlock codegen"
   },
   "dependencies": {
     "@effect/platform-bun": "4.1.3",

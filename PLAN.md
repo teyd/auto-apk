@@ -337,7 +337,7 @@ Best practice for a one-person public repo that publishes binaries. Everything i
 - The deciding row is the second one. The tools this project depends on most (Morphe, FlareSolverr) are not npm packages. With Dependabot I had planned a hand-written weekly job to bump Morphe; Renovate does that from configuration, and that job is removed from the plan.
 - Running both means two bots opening pull requests for the same bump. So Dependabot's version updates stay off. Dependabot **alerts** stay on: they are GitHub's vulnerability feed, cost nothing, and Renovate reads them to open the fix.
 - Settings: weekly, non-major updates grouped into one pull request, majors separate, three-day minimum release age, auto-merge off.
-- Morphe's `sha256`: if Renovate cannot fill it in itself, a short CI step on Renovate's pull request downloads the jar and writes the hash. Either way you see the new hash in the diff before merging.
+- Morphe's `sha256`: Renovate bumps `tools.morphe.version` only. A `ci` step downloads the configured jar and fails until `tools.morphe.sha256` matches, printing the hash to paste. CI never gets write access, and you see the new hash in the diff before merging.
 - `bun.lock` committed; CI installs with `--frozen-lockfile`; Bun version pinned in `package.json`.
 
 **Files**
@@ -383,7 +383,7 @@ Each workflow job calls one subcommand, and the same subcommands run locally.
 
 **Phase 0: source bake-off.** Decided (see "Phase 0"); two confirming daily runs left. Still needs your phone for the install and keystore tests.
 
-**Phase 1: scaffold, repo and config.** Bun project, `@effect/tsgo`, oxlint, oxfmt, `Config.ts`, generated schema, `auto-apk.json` for 8 apps. Then secrets: the Infisical project, its one machine identity, `.env.schema`. Then the repository: `scripts/setup-repo.sh`, the `main` ruleset, community files, `renovate.json`, `ci.yml`. Then review: install the Pullfrog app, connect the Grok and Claude subscriptions, add `pullfrog.yml` and `AGENTS.md`, and check a first review on a test pull request. From here on every change goes through a pull request.
+**Phase 1: scaffold, repo and config.** In progress since 2026-11-11: repo `teyd/auto-apk` is public and `scripts/setup-repo.sh` has been applied (without Pullfrog). Remaining: Pullfrog app and subscriptions, Infisical project and identity, Renovate app. Bun project, `@effect/tsgo`, oxlint, oxfmt, `Config.ts`, generated schema, `auto-apk.json` for 8 apps. Then secrets: the Infisical project, its one machine identity, `.env.schema`. Then the repository: `scripts/setup-repo.sh`, the `main` ruleset, community files, `renovate.json`, `ci.yml`. Then review: install the Pullfrog app, connect the Grok and Claude subscriptions, add `pullfrog.yml` and `AGENTS.md`, and check a first review on a test pull request. From here on every change goes through a pull request.
 
 **Phase 2: build path.** `GitHub`, `Morphe`, `Sources`, `Verify`. Done when `auto-apk build --app x` produces an unsigned patched APK locally and all 8 build, or the gap is named per app.
 
