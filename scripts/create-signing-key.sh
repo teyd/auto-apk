@@ -30,8 +30,14 @@ done
 if [ -z "${DRY_RUN:-}" ]; then
   echo "== Infisical login (opens a browser if needed)"
   "${INFISICAL[@]}" login --silent
-  existing=$("${INFISICAL[@]}" secrets get KEYSTORE_BASE64 --projectId "$PROJECT_ID" --env "$ENV_SLUG" \
-    --path "$FOLDER" --plain --silent 2>/dev/null || true)
+  # Fail closed: a missing secret reads as exit 0 with no output; any error (auth,
+  # network, wrong project) exits non-zero and stops here, because `secrets set`
+  # below would otherwise overwrite a key we merely failed to see.
+  if ! existing=$("${INFISICAL[@]}" secrets get KEYSTORE_BASE64 --projectId "$PROJECT_ID" --env "$ENV_SLUG" \
+    --path "$FOLDER" --plain --silent 2>/dev/null); then
+    echo "Could not read Infisical to check for an existing key. Not continuing." >&2
+    exit 1
+  fi
   if [ -n "$existing" ]; then
     echo "Infisical already has KEYSTORE_BASE64 in $FOLDER. Not replacing it." >&2
     echo "Delete it in the dashboard first if you really mean to start over." >&2
