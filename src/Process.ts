@@ -1,7 +1,7 @@
 /**
  * Run an external program (java, apksigner, aapt2, docker) and collect its output.
  */
-import { Data, Effect, Stream } from "effect"
+import { Data, Effect, type Redacted, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 
 export class CommandFailed extends Data.TaggedError("CommandFailed")<{
@@ -25,7 +25,10 @@ export interface RunResult {
 export const run = Effect.fn("run")(function* (
   program: string,
   args: ReadonlyArray<string>,
-  options: { readonly cwd?: string; readonly env?: Record<string, string> } = {},
+  options: {
+    readonly cwd?: string
+    readonly env?: Record<string, string | Redacted.Redacted>
+  } = {},
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const command = ChildProcess.make(program, [...args], {
@@ -48,7 +51,10 @@ export const run = Effect.fn("run")(function* (
 export const runOk = Effect.fn("runOk")(function* (
   program: string,
   args: ReadonlyArray<string>,
-  options: { readonly cwd?: string; readonly env?: Record<string, string> } = {},
+  options: {
+    readonly cwd?: string
+    readonly env?: Record<string, string | Redacted.Redacted>
+  } = {},
 ) {
   const result = yield* run(program, args, options)
   if (result.exitCode !== 0) {

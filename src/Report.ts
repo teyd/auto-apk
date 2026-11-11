@@ -93,6 +93,12 @@ export const readRecords = Effect.fn("readRecords")(function* (
   dir: string,
   apps: ReadonlyArray<string>,
 ) {
+  const found = yield* findRecords(dir)
+  return apps.map((app) => found.get(app) ?? missingRecord(app))
+})
+
+/** Every readable build.json under `dir`, by the app it names. */
+export const findRecords = Effect.fn("findRecords")(function* (dir: string) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const found = new Map<string, BuildRecord>()
@@ -105,8 +111,23 @@ export const readRecords = Effect.fn("readRecords")(function* (
     const decoded = yield* Schema.decodeEffect(BuildRecordJson)(text.value).pipe(Effect.option)
     if (Option.isSome(decoded)) found.set(decoded.value.app, decoded.value)
   }
-  return apps.map((app) => found.get(app) ?? missingRecord(app))
+  return found
 })
+
+/** A built app that did not make it into the release is a failure too. */
+export const markUnpublished = (
+  records: ReadonlyArray<BuildRecord>,
+  published: ReadonlySet<string>,
+): ReadonlyArray<BuildRecord> =>
+  records.map((r) =>
+    r.status === "built" && !published.has(r.app)
+      ? {
+          ...r,
+          status: "failed" as const,
+          reason: "built, but signing or publishing failed (see the publish job)",
+        }
+      : r,
+  )
 
 export interface ReportAction {
   readonly app: string
