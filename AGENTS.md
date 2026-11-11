@@ -41,6 +41,29 @@ Bun 1.4, TypeScript 7 through `@effect/tsgo`, Effect 4.1 (Schema, `effect/cli`,
     bun test
     bun src/main.ts check # validate auto-apk.json
 
+## Learning more about Effect
+
+This repository uses the Effect Typescript library.
+
+Before writing any Effect code, first read `node_modules/effect/AGENTS.md`
+**completely**, and follow the links in the file when required.
+
+If you need to learn more about particular Effect apis and concepts that the
+guide doesn't cover, search through the source code in `node_modules/effect/src`.
+
+## Agent skills
+
+Vendored in `.agents/skills/` (OpenCode, which Pullfrog runs) and `.claude/skills/`
+(Claude Code), pinned by hash in `skills-lock.json`. Use them when the task matches:
+
+- `github-actions-hardening`: before writing or changing any workflow.
+- `github-actions-efficiency`: caching, concurrency, path filters, runtime.
+- `varlock`: `.env.schema` and anything touching secrets.
+
+Update with `npx skills update`, review the diff like any dependency, never hand-edit.
+
+## Lint notes
+
 The `effecttsgo/unstable-api-usage` rule is off: `effect/cli`, `FileSystem` and
 `@effect/platform-bun` are marked unstable in Effect 4.1 and are used on purpose.
 
