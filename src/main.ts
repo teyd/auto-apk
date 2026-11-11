@@ -10,6 +10,7 @@
  *   sign     sign built APKs with the release key (run inside `varlock run`)
  *   release  upload signed APKs, replace old ones, write manifest.json and notes
  *   report   open, update or close one issue per app from the build records
+ *   readme   regenerate the app table in README.md from auto-apk.json
  */
 import { BunRuntime, BunServices } from "@effect/platform-bun"
 import { Config as EnvConfig, Console, Data, Effect, FileSystem, Option, Schema } from "effect"
@@ -19,6 +20,7 @@ import { buildApp } from "./Build.ts"
 import { ConfigError, jsonSchema, loadConfig, resolveApps } from "./Config.ts"
 import { readManifest } from "./Manifest.ts"
 import { planApps } from "./Plan.ts"
+import { renderReadme } from "./Readme.ts"
 import { publish } from "./Release.ts"
 import { findRecords, markUnpublished, readRecords, report, summary } from "./Report.ts"
 import { SigningResult, assetName, signAll } from "./Sign.ts"
@@ -328,9 +330,19 @@ const releaseCmd = Command.make(
   Command.withDescription("Upload signed APKs to the release; update manifest.json and the notes."),
 )
 
+const readme = Command.make("readme", { config: configFlag }, ({ config }) =>
+  Effect.gen(function* () {
+    const cfg = yield* loadConfig(config)
+    const fs = yield* FileSystem.FileSystem
+    const current = yield* fs.readFileString("README.md")
+    yield* fs.writeFileString("README.md", renderReadme(current, cfg))
+    yield* Console.log("README.md app table updated")
+  }),
+).pipe(Command.withDescription("Regenerate the app table in README.md from auto-apk.json."))
+
 const cli = Command.make("auto-apk").pipe(
   Command.withDescription("Automated Morphe patch builds."),
-  Command.withSubcommands([check, schema, plan, build, sign, releaseCmd, reportCmd]),
+  Command.withSubcommands([check, schema, plan, build, sign, releaseCmd, reportCmd, readme]),
 )
 
 /** Expected failures print their message and exit 1; anything else keeps its full report. */

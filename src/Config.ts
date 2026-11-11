@@ -106,7 +106,10 @@ const Defaults = Schema.Struct({
 
 const Publish = Schema.Struct({
   repo: GitHubRepo.annotate({ description: "Repository whose release receives the APKs." }),
-  tag: NonEmpty.annotate({ description: "Tag of the one rolling release." }),
+  tag: NonEmpty.annotate({
+    description:
+      "Tag of the index release: manifest.json and a table of every app's current release.",
+  }),
   asset: Schema.String.check(
     Schema.isPattern(/\{app\}/u),
     Schema.isPattern(/\{appVersion\}/u),

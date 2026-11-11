@@ -184,7 +184,7 @@
         "tag": {
           "type": "string",
           "minLength": 1,
-          "description": "Tag of the one rolling release."
+          "description": "Tag of the index release: manifest.json and a table of every app's current release."
         },
         "asset": {
           "type": "string",
