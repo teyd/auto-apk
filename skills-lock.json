@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "skills": {
+    "github-actions-efficiency": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/github-actions-efficiency/SKILL.md",
+      "computedHash": "1e29703ead16150c7a746ba4eaba1680239636f3da1a616adf4a58b06943c874",
+      "installMode": "copy"
+    },
+    "github-actions-hardening": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/github-actions-hardening/SKILL.md",
+      "computedHash": "ce7df8e90622480a41ffae4a81c78dbf4de3a6965cc21a91693efdf15fb3284c",
+      "installMode": "copy"
+    },
+    "varlock": {
+      "source": "dmno-dev/varlock",
+      "sourceType": "github",
+      "skillPath": "skills/varlock/SKILL.md",
+      "computedHash": "4f3e6c5a0d14b423e905561020a9dcfa77cfe8b645fe448b6edcdb1681b42949",
+      "installMode": "copy"
+    }
+  }
+}
