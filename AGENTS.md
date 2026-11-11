@@ -17,6 +17,8 @@ record of decisions.
   `src/env.generated.ts` is generated from it (`bun run env:codegen`; the
   Infisical IDs are placeholders there because code generation needs none).
 - `scripts/setup-repo.sh`: GitHub and Pullfrog settings, applied by the owner.
+- `scripts/create-signing-key.sh`: creates the signing key and stores it in Infisical;
+  run once by the owner. Never prints a secret.
 
 ## Rules that must not be weakened
 
