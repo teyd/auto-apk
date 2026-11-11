@@ -1,0 +1,51 @@
+# Manual check of the Infisical OIDC rule. Logs in twice and prints only the
+# HTTP status, never the token:
+#   release  -> must succeed (the identity trusts environment `release` only)
+#   no-env   -> must be refused (same repo, same branch, no environment)
+name: infisical-check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - name: Log in from environment release (expect 200)
+        env:
+          IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}
+        run: |
+          jwt=$(curl -fsS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
+          echo "::add-mask::$jwt"
+          echo "sub: $(jq -Rr 'split(".")[1] | @base64d | fromjson | .sub' <<<"$jwt")"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' https://app.infisical.com/api/v1/auth/oidc-auth/login \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg id "$IDENTITY_ID" --arg jwt "$jwt" '{identityId: $id, jwt: $jwt}')")
+          echo "login: HTTP $code"
+          test "$code" = 200
+
+  no-env:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+    steps:
+      - name: Log in without an environment (expect refusal)
+        env:
+          IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}
+        run: |
+          jwt=$(curl -fsS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
+          echo "::add-mask::$jwt"
+          echo "sub: $(jq -Rr 'split(".")[1] | @base64d | fromjson | .sub' <<<"$jwt")"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' https://app.infisical.com/api/v1/auth/oidc-auth/login \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg id "$IDENTITY_ID" --arg jwt "$jwt" '{identityId: $id, jwt: $jwt}')")
+          echo "login: HTTP $code"
+          test "$code" != 200
