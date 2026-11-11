@@ -33,9 +33,11 @@ const Release = Schema.Struct({
 })
 export type Release = typeof Release.Type
 
-const token = Config.option(Config.String("GITHUB_TOKEN")).pipe(
-  Config.orElse(() => Config.option(Config.String("GH_TOKEN"))),
-)
+/** GITHUB_TOKEN, else GH_TOKEN, else none (anonymous: public reads only, low rate limit). */
+const token = Config.all([
+  Config.option(Config.String("GITHUB_TOKEN")),
+  Config.option(Config.String("GH_TOKEN")),
+]).pipe(Config.map(([a, b]) => Option.orElse(a, () => b)))
 
 /** An HttpClient that talks to api.github.com, authenticated when a token is set. */
 const apiClient = Effect.gen(function* () {
@@ -64,6 +66,98 @@ const getJson = <S extends Schema.Top>(path: string, schema: S) =>
     const res = yield* client.get(path)
     return yield* HttpClientResponse.schemaBodyJson(schema)(res)
   }).pipe(Effect.mapError((e) => new GitHubError({ message: `GET ${path}: ${e.message}` })))
+
+/** Send a JSON request to the API and decode the reply. */
+const sendJson = <S extends Schema.Top>(
+  method: "POST" | "PATCH",
+  path: string,
+  body: unknown,
+  schema: S,
+) =>
+  Effect.gen(function* () {
+    const client = yield* apiClient
+    const req = (
+      method === "POST" ? HttpClientRequest.post(path) : HttpClientRequest.patch(path)
+    ).pipe(HttpClientRequest.bodyJsonUnsafe(body))
+    const res = yield* client.execute(req)
+    return yield* HttpClientResponse.schemaBodyJson(schema)(res)
+  }).pipe(Effect.mapError((e) => new GitHubError({ message: `${method} ${path}: ${e.message}` })))
+
+/** A release by exact tag, or none when it does not exist yet. */
+export const findRelease = (repo: string, tag: string) =>
+  getJson(`/repos/${repo}/releases/tags/${tag}`, Release).pipe(
+    Effect.asSome,
+    Effect.catchTag("GitHubError", (e) =>
+      e.message.includes("404") ? Effect.succeed(Option.none<Release>()) : Effect.fail(e),
+    ),
+  )
+
+/** Download a small public asset into memory. */
+export const fetchAssetText = (asset: Asset) =>
+  Effect.gen(function* () {
+    const client = (yield* HttpClient.HttpClient).pipe(
+      HttpClient.filterStatusOk,
+      HttpClient.followRedirects(10),
+    )
+    const res = yield* client.get(asset.browser_download_url, {
+      headers: { "User-Agent": "auto-apk" },
+    })
+    return yield* res.text
+  }).pipe(
+    Effect.mapError((e) => new GitHubError({ message: `download ${asset.name}: ${e.message}` })),
+  )
+
+// ---------------------------------------------------------------- issues
+
+const Issue = Schema.Struct({
+  number: Schema.Finite,
+  title: Schema.String,
+  body: Schema.NullOr(Schema.String),
+  html_url: Schema.String,
+})
+export type Issue = typeof Issue.Type
+
+const Comment = Schema.Struct({ body: Schema.NullOr(Schema.String) })
+
+/** The open issue with exactly this title and label, if any. */
+export const findOpenIssue = Effect.fn("GitHub.findOpenIssue")(function* (
+  repo: string,
+  title: string,
+  label: string,
+) {
+  const issues = yield* getJson(
+    `/repos/${repo}/issues?state=open&labels=${encodeURIComponent(label)}&per_page=100`,
+    Schema.Array(Issue),
+  )
+  return Option.fromNullishOr(issues.find((i) => i.title === title))
+})
+
+/** Bodies of the issue and all its comments, oldest first. */
+export const issueTexts = Effect.fn("GitHub.issueTexts")(function* (repo: string, issue: Issue) {
+  const comments = yield* getJson(
+    `/repos/${repo}/issues/${issue.number}/comments?per_page=100`,
+    Schema.Array(Comment),
+  )
+  return [issue.body ?? "", ...comments.map((c) => c.body ?? "")]
+})
+
+export const createIssue = (
+  repo: string,
+  title: string,
+  body: string,
+  labels: ReadonlyArray<string>,
+) => sendJson("POST", `/repos/${repo}/issues`, { title, body, labels }, Issue)
+
+export const commentIssue = (repo: string, issue: number, body: string) =>
+  sendJson("POST", `/repos/${repo}/issues/${issue}/comments`, { body }, Comment)
+
+export const closeIssue = (repo: string, issue: number) =>
+  sendJson(
+    "PATCH",
+    `/repos/${repo}/issues/${issue}`,
+    { state: "closed", state_reason: "completed" },
+    Issue,
+  )
 
 /** The newest release on a channel: stable skips drafts and pre-releases. */
 export const latestRelease = Effect.fn("GitHub.latestRelease")(function* (
