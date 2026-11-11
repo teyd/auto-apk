@@ -72,16 +72,11 @@ test("a leg without a record counts as a failure", () => {
   expect(missingRecord("tiktok")).toMatchObject({ app: "tiktok", status: "failed" })
 })
 
-describe("readRecords", () => {
-  const built = (app: string): BuildRecord => ({
-    ...failed("x"),
-    app,
-    status: "built",
-    attempts: [],
-  })
-  const read = (dir: string, apps: Array<string>) =>
-    Effect.runPromise(readRecords(dir, apps).pipe(Effect.provide(BunServices.layer)))
+const built = (app: string): BuildRecord => ({ ...failed("x"), app, status: "built", attempts: [] })
+const read = (dir: string, apps: Array<string>) =>
+  Effect.runPromise(readRecords(dir, apps).pipe(Effect.provide(BunServices.layer)))
 
+describe("readRecords", () => {
   test("one artifact unpacked straight into the folder (a one-app run)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "records-"))
     writeFileSync(join(dir, "build.json"), JSON.stringify(built("x")))
