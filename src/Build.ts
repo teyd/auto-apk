@@ -5,7 +5,7 @@
  * Writes `<out>/<app>/build.json` either way, so the report job can say exactly
  * what happened, and the unsigned APK on success. Holds no secrets.
  */
-import { Data, Effect, FileSystem, Path } from "effect"
+import { Data, Effect, FileSystem, Path, Schema } from "effect"
 import type { Config, ResolvedApp } from "./Config.ts"
 import * as GitHub from "./GitHub.ts"
 import * as Morphe from "./Morphe.ts"
@@ -15,35 +15,42 @@ import { verify } from "./Verify.ts"
 /** How many of Morphe's ranked versions to try before giving up. */
 const MAX_VERSIONS = 3
 
-export interface Attempt {
-  readonly version: string
-  readonly source: string
-  readonly ok: boolean
-  readonly error?: string
+export const Attempt = Schema.Struct({
+  version: Schema.String,
+  source: Schema.String,
+  ok: Schema.Boolean,
+  error: Schema.optionalKey(Schema.String),
   /** A correctly signed file not signed by the pinned certificate: possible tampering. */
-  readonly pinMismatch?: boolean
-}
+  pinMismatch: Schema.optionalKey(Schema.Boolean),
+})
+export type Attempt = typeof Attempt.Type
 
-export interface BuildRecord {
-  readonly app: string
-  readonly status: "built" | "failed"
-  readonly reason?: string
-  readonly patches: {
-    readonly repo: string
-    readonly tag: string
-    readonly asset: string
-    readonly sha256: string
-  }
-  readonly morphe: string
-  readonly version?: string
-  readonly expectedPatches?: number
-  readonly appliedPatches?: number
-  readonly source?: string
-  readonly input?: { readonly from: string; readonly sha256: string; readonly kind: string }
-  readonly apk?: { readonly file: string; readonly sha256: string; readonly size: number }
-  readonly attempts: ReadonlyArray<Attempt>
-  readonly finishedAt: string
-}
+/** `out/<app>/build.json`: what one build did. Read back by the report job. */
+export const BuildRecord = Schema.Struct({
+  app: Schema.String,
+  status: Schema.Literals(["built", "failed"]),
+  reason: Schema.optionalKey(Schema.String),
+  patches: Schema.Struct({
+    repo: Schema.String,
+    tag: Schema.String,
+    asset: Schema.String,
+    sha256: Schema.String,
+  }),
+  morphe: Schema.String,
+  version: Schema.optionalKey(Schema.String),
+  expectedPatches: Schema.optionalKey(Schema.Finite),
+  appliedPatches: Schema.optionalKey(Schema.Finite),
+  source: Schema.optionalKey(Schema.String),
+  input: Schema.optionalKey(
+    Schema.Struct({ from: Schema.String, sha256: Schema.String, kind: Schema.String }),
+  ),
+  apk: Schema.optionalKey(
+    Schema.Struct({ file: Schema.String, sha256: Schema.String, size: Schema.Finite }),
+  ),
+  attempts: Schema.Array(Attempt),
+  finishedAt: Schema.String,
+})
+export type BuildRecord = typeof BuildRecord.Type
 
 export class BuildFailed extends Data.TaggedError("BuildFailed")<{ readonly record: BuildRecord }> {
   override get message() {

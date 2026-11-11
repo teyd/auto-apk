@@ -5,16 +5,37 @@
  *
  *   check    validate auto-apk.json
  *   schema   write schema/auto-apk.schema.json (--check: fail if it is stale)
+ *   plan     decide which apps to build (compares inputs with manifest.json)
  *   build    download, verify and patch one app (or all); writes out/<app>/
+ *   report   open, update or close one issue per app from the build records
  *
- * plan and publish arrive in Phase 3.
+ * publish arrives with the keystore.
  */
 import { BunRuntime, BunServices } from "@effect/platform-bun"
-import { Console, Data, Effect, FileSystem } from "effect"
+import { Config as EnvConfig, Console, Data, Effect, FileSystem, Option } from "effect"
 import { Command, Flag } from "effect/cli"
 import { FetchHttpClient } from "effect/http"
 import { buildApp } from "./Build.ts"
 import { ConfigError, jsonSchema, loadConfig, resolveApps } from "./Config.ts"
+import { readManifest } from "./Manifest.ts"
+import { planApps } from "./Plan.ts"
+import { readRecords, report, summary } from "./Report.ts"
+
+/** Append to a file GitHub Actions reads ($GITHUB_OUTPUT, $GITHUB_STEP_SUMMARY), when set. */
+const appendToEnvFile = (name: string, text: string) =>
+  Effect.gen(function* () {
+    const file = yield* EnvConfig.option(EnvConfig.String(name))
+    if (Option.isNone(file)) return
+    const fs = yield* FileSystem.FileSystem
+    yield* fs.writeFileString(file.value, text.endsWith("\n") ? text : `${text}\n`, { flag: "a" })
+  })
+
+const list = (s: string) =>
+  s
+    .replace(/[[\]"]/gu, " ") // also accept the JSON array plan writes
+    .split(/[\s,]+/u)
+    .map((x) => x.trim())
+    .filter(Boolean)
 
 const SCHEMA_PATH = "schema/auto-apk.schema.json"
 
@@ -132,9 +153,79 @@ const build = Command.make(
   Command.withDescription("Download, verify and patch apps. Unsigned output; holds no secrets."),
 )
 
+const plan = Command.make(
+  "plan",
+  {
+    config: configFlag,
+    force: Flag.String("force").pipe(
+      Flag.withDescription(
+        'Build these apps even if unchanged: "all", or ids separated by commas.',
+      ),
+      Flag.withDefault(""),
+    ),
+  },
+  (flags) =>
+    Effect.gen(function* () {
+      const cfg = yield* loadConfig(flags.config)
+      const manifest = yield* readManifest(cfg.publish.repo, cfg.publish.tag)
+      const force = flags.force.trim() === "all" ? ("all" as const) : list(flags.force)
+      const planned = yield* planApps(cfg, resolveApps(cfg), manifest, { force })
+      const toBuild = planned.filter((p) => p.build).map((p) => p.id)
+      const table = [
+        "| App | Build | Why | Patches |",
+        "|---|---|---|---|",
+        ...planned.map(
+          (p) => `| ${p.id} | ${p.build ? "yes" : "no"} | ${p.reason} | ${p.patchesTag} |`,
+        ),
+      ].join("\n")
+      yield* Console.log(table)
+      yield* appendToEnvFile(
+        "GITHUB_OUTPUT",
+        `apps=${JSON.stringify(toBuild)}\nany=${toBuild.length > 0}`,
+      )
+      yield* appendToEnvFile("GITHUB_STEP_SUMMARY", `## Plan\n\n${table}`)
+    }),
+).pipe(
+  Command.withDescription("Decide which apps to build. GitHub API only; no Java, no downloads."),
+)
+
+const reportCmd = Command.make(
+  "report",
+  {
+    config: configFlag,
+    records: Flag.String("records").pipe(
+      Flag.withDescription("Directory holding <app>/build.json."),
+    ),
+    apps: Flag.String("apps").pipe(
+      Flag.withDescription("App ids the build was asked for, separated by commas."),
+    ),
+  },
+  (flags) =>
+    Effect.gen(function* () {
+      const cfg = yield* loadConfig(flags.config)
+      const repo = Option.getOrElse(
+        yield* EnvConfig.option(EnvConfig.String("GITHUB_REPOSITORY")),
+        () => cfg.publish.repo,
+      )
+      const server = Option.getOrElse(
+        yield* EnvConfig.option(EnvConfig.String("GITHUB_SERVER_URL")),
+        () => "https://github.com",
+      )
+      const runId = yield* EnvConfig.option(EnvConfig.String("GITHUB_RUN_ID"))
+      const runUrl = Option.isSome(runId)
+        ? `${server}/${repo}/actions/runs/${runId.value}`
+        : `${server}/${repo}/actions`
+      const records = yield* readRecords(flags.records, list(flags.apps))
+      const actions = yield* report(repo, records, runUrl)
+      const text = summary(records, actions)
+      yield* Console.log(text)
+      yield* appendToEnvFile("GITHUB_STEP_SUMMARY", `## Builds\n\n${text}`)
+    }),
+).pipe(Command.withDescription("Open, update or close one issue per app from its build record."))
+
 const cli = Command.make("auto-apk").pipe(
   Command.withDescription("Automated Morphe patch builds."),
-  Command.withSubcommands([check, schema, build]),
+  Command.withSubcommands([check, schema, plan, build, reportCmd]),
 )
 
 /** Expected failures print their message and exit 1; anything else keeps its full report. */
