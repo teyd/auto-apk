@@ -4,7 +4,7 @@
  * the ones asked for. An HTML challenge page saved as an "APK" fails here too.
  */
 import { Data, Effect, FileSystem, Path } from "effect"
-import { unzipSync } from "fflate"
+import { unzipSync, zipSync } from "fflate"
 import { run } from "./Process.ts"
 
 export class VerifyFailed extends Data.TaggedError("VerifyFailed")<{
@@ -19,6 +19,13 @@ export class VerifyFailed extends Data.TaggedError("VerifyFailed")<{
 }
 
 export interface Verified {
+  /**
+   * The file to hand to Morphe. For a bundle this is a rebuilt copy holding exactly
+   * the entries that were read and checked here, so a zip crafted to show one set of
+   * entries to this reader and another to Morphe's cannot smuggle an unchecked split.
+   * A single APK is passed as is: its v2/v3 signature covers the whole file.
+   */
+  readonly file: string
   readonly kind: "apk" | "apkm" | "xapk"
   readonly apks: number
   readonly package: string
@@ -66,7 +73,7 @@ export const verify = Effect.fn("Verify.verify")(function* (
       unzipSync(bytes, {
         filter: (f) => {
           names.push(f.name)
-          return isBundle && f.name.endsWith(".apk")
+          return isBundle
         },
       }),
     catch: (e) => {
@@ -78,6 +85,7 @@ export const verify = Effect.fn("Verify.verify")(function* (
   let kind: Verified["kind"]
   let apks: Array<string>
   let base: string | undefined
+  let output = file
   if (!isBundle) {
     if (ext !== ".apk") problems.push(`unexpected file type ${ext || "(none)"}`)
     if (!names.includes("AndroidManifest.xml")) problems.push("an .apk without AndroidManifest.xml")
@@ -97,6 +105,7 @@ export const verify = Effect.fn("Verify.verify")(function* (
     const dir = yield* fs.makeTempDirectoryScoped({ prefix: "verify-" })
     apks = []
     for (const [name, data] of Object.entries(entries)) {
+      if (!name.endsWith(".apk")) continue
       // Flatten nested names so every entry gets its own file to check.
       const out = path.join(dir, `${apks.length}-${name.replaceAll("/", "__")}`)
       yield* fs.writeFile(out, data)
@@ -107,6 +116,9 @@ export const verify = Effect.fn("Verify.verify")(function* (
       apks.find((a) => nameOf(a) === "base.apk") ??
       apks.find((a) => nameOf(a) === `${want.package}.apk`) ??
       apks[0]
+    // Rebuild the bundle from exactly what was read; see Verified.file.
+    output = path.join(path.dirname(file), `verified-${path.basename(file)}`)
+    yield* fs.writeFile(output, zipSync(entries, { level: 0 }))
   }
   if (!base) {
     problems.push("no APK inside the bundle")
@@ -138,8 +150,12 @@ export const verify = Effect.fn("Verify.verify")(function* (
     }
   }
 
-  if (problems.length > 0) return yield* failed(pinMissing > 0)
+  if (problems.length > 0) {
+    if (output !== file) yield* fs.remove(output, { force: true })
+    return yield* failed(pinMissing > 0)
+  }
   return {
+    file: output,
     kind,
     apks: apks.length,
     package: badging?.package ?? "",

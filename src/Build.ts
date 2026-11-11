@@ -177,6 +177,7 @@ export const buildApp = Effect.fn("buildApp")(function* (
       }
       attempts.push({ version: candidate.version, source: source.name, ok: true })
       const inputSha = yield* sha256File(file)
+      const verified = checked.success.file
 
       // Patch. A gate failure is not a download problem, so it ends the build.
       const patched = yield* Morphe.patch({
@@ -184,11 +185,11 @@ export const buildApp = Effect.fn("buildApp")(function* (
         jvmArgs: config.tools.morphe.jvmArgs,
         bundle,
         arch: app.arch,
-        input: file,
+        input: verified,
         outDir,
         expected: candidate.patches,
       }).pipe(Effect.result)
-      yield* fs.remove(file, { force: true })
+      for (const f of [file, verified]) yield* fs.remove(f, { force: true })
       if (patched._tag === "Failure") {
         const record = yield* finish({
           status: "failed",

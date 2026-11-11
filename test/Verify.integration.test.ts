@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit } from "effect"
-import { zipSync } from "fflate"
+import { unzipSync, zipSync } from "fflate"
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -70,6 +70,30 @@ describe.skipIf(!ready)("Verify against real signatures", () => {
     expect(reason(await run(file, meta().signer))).toContain(
       "payload.apk: signature does not verify",
     )
+  })
+
+  test("a split hidden from our zip reader never reaches Morphe", async () => {
+    // Three entries, but the end record says two: a reader that trusts the count (ours)
+    // sees info.json and base.apk; one that walks every header would also see payload.apk.
+    const marker = new TextEncoder().encode("HIDDEN-PAYLOAD-MARKER")
+    const payload = zipSync({ "AndroidManifest.xml": marker })
+    const zip = zipSync(
+      { "info.json": info, "base.apk": apk, "extra/payload.apk": payload },
+      { level: 0 },
+    )
+    const eocd = zip.length - 22
+    expect(new DataView(zip.buffer).getUint32(eocd, true)).toBe(0x06054b50)
+    new DataView(zip.buffer).setUint16(eocd + 8, 2, true)
+    new DataView(zip.buffer).setUint16(eocd + 10, 2, true)
+    const file = join(dir, "hidden.apkm")
+    writeFileSync(file, zip)
+
+    const exit = await run(file, meta().signer)
+    if (Exit.isFailure(exit)) return // refusing it outright is also acceptable
+    const handedToMorphe = readFileSync(exit.value.file)
+    expect(exit.value.file).not.toBe(file)
+    expect(Object.keys(unzipSync(handedToMorphe))).toEqual(["info.json", "base.apk"])
+    expect(Buffer.from(handedToMorphe).includes(Buffer.from(marker))).toBe(false)
   })
 
   test("an entry that escapes the directory is refused", async () => {
