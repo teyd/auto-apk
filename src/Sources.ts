@@ -46,13 +46,14 @@ const slug = (s: string) =>
     .replace(/[^a-z0-9]+/gu, "-")
     .replace(/^-|-$/gu, "")
 
+/** Decode the HTML entities APKMirror uses in links. `&amp;` goes last, so it cannot create new entities. */
 const decodeHtml = (s: string) =>
   s
-    .replaceAll("&amp;", "&")
     .replaceAll("&quot;", '"')
     .replaceAll("&#039;", "'")
     .replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&")
 
 // ---------------------------------------------------------------- FlareSolverr
 
@@ -237,7 +238,10 @@ export const apkmirror = Effect.fn("Sources.apkmirror")(function* (
   if (!file) return yield* fail("download page has no file link")
 
   const cookie = downloadPage.cookies
-    .filter((c) => c.domain.includes("apkmirror.com"))
+    .filter((c) => {
+      const domain = c.domain.replace(/^\./u, "")
+      return domain === "apkmirror.com" || domain.endsWith(".apkmirror.com")
+    })
     .map((c) => `${c.name}=${c.value}`)
     .join("; ")
   const ext = / BUNDLE /u.test(` ${variant.text} `) ? "apkm" : "apk"

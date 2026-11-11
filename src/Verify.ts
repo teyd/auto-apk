@@ -55,14 +55,18 @@ export const verify = Effect.fn("Verify.verify")(function* (
     return yield* failed()
   }
 
-  // Find out what kind of file this is, extracting only the APKs at the top level.
+  // Single APK or bundle is decided by the file extension, the same way Morphe decides
+  // whether to merge: .apkm, .xapk and .apks are unpacked and every entry ending in
+  // .apk is merged, nested ones included. So every such entry must pass the pin.
+  const ext = path.extname(file).toLowerCase()
+  const isBundle = ext === ".apkm" || ext === ".xapk" || ext === ".apks"
   const names: Array<string> = []
   const entries = yield* Effect.try({
     try: () =>
       unzipSync(bytes, {
         filter: (f) => {
           names.push(f.name)
-          return f.name.endsWith(".apk") && !f.name.includes("/")
+          return isBundle && f.name.endsWith(".apk")
         },
       }),
     catch: (e) => {
@@ -74,22 +78,34 @@ export const verify = Effect.fn("Verify.verify")(function* (
   let kind: Verified["kind"]
   let apks: Array<string>
   let base: string | undefined
-  if (names.includes("AndroidManifest.xml")) {
+  if (!isBundle) {
+    if (ext !== ".apk") problems.push(`unexpected file type ${ext || "(none)"}`)
+    if (!names.includes("AndroidManifest.xml")) problems.push("an .apk without AndroidManifest.xml")
+    if (problems.length > 0) return yield* failed()
     kind = "apk"
     apks = [file]
     base = file
   } else {
-    kind = names.includes("info.json") ? "apkm" : "xapk"
+    kind = ext === ".xapk" ? "xapk" : "apkm"
+    const unsafe = names.filter(
+      (n) => n.startsWith("/") || n.includes("\\") || n.split("/").includes(".."),
+    )
+    if (unsafe.length > 0) {
+      problems.push(`unsafe entry names in the bundle: ${unsafe.slice(0, 5).join(", ")}`)
+      return yield* failed()
+    }
     const dir = yield* fs.makeTempDirectoryScoped({ prefix: "verify-" })
     apks = []
     for (const [name, data] of Object.entries(entries)) {
-      const out = path.join(dir, name)
+      // Flatten nested names so every entry gets its own file to check.
+      const out = path.join(dir, `${apks.length}-${name.replaceAll("/", "__")}`)
       yield* fs.writeFile(out, data)
       apks.push(out)
     }
+    const nameOf = (a: string) => path.basename(a).replace(/^\d+-/u, "")
     base =
-      apks.find((a) => path.basename(a) === "base.apk") ??
-      apks.find((a) => path.basename(a) === `${want.package}.apk`) ??
+      apks.find((a) => nameOf(a) === "base.apk") ??
+      apks.find((a) => nameOf(a) === `${want.package}.apk`) ??
       apks[0]
   }
   if (!base) {
