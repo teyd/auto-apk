@@ -85,3 +85,5 @@ Conventional commit titles. Every change goes through a pull request; `ci` must 
 
 Keep `README.md` minimal: what it is, the warning, how to install, and links. Details
 belong in `AGENTS.md` (for working on the repo) and `PLAN.md` (design and decisions).
+The app table in it is generated from `auto-apk.json`: after changing apps, run
+`bun src/main.ts readme` (a test fails while it is stale).
