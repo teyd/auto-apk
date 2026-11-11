@@ -39,7 +39,7 @@ The design rule: Morphe will change again, so everything Morphe-specific lives i
 | FlareSolverr 3.5.2 (container, pinned by digest) | Use, in the `build` job only | Gets APKMirror pages past Cloudflare from GitHub's runners. The APK itself is then fetched directly with its cookies and user agent. |
 | trawl 1.11 | Dropped after Phase 0 | Blocked on GitHub's runners ("datacenter-ip-blocked") on the pages that mattered, where FlareSolverr got through. |
 | apkeep 1.1.0 | Dropped after Phase 0 | For APKPure it is one API call plus a download. It exits 0 with no file when a version is missing. `Sources.ts` makes the same call itself. |
-| Pullfrog (`pullfrog/pullfrog` action, v0.1.126) | Use | AI pull request review in our own Actions, on your Grok subscription, with Claude as a second opinion. Free for a public repo on a personal account. |
+| Pullfrog (`pullfrog/pullfrog` action, v0.1.126) | Use | AI pull request review in our own Actions, on your Grok subscription only. Free for a public repo on a personal account. |
 
 **Why Alchemy is out.** Its job kept shrinking. It never ran the builds. Then Infisical through varlock took secrets away from it, which was the part that needed a real tool. What remained was two resources, the repo and the `release` environment: about six settings, set once. For that it brought a beta package, a state file to keep, and a second mechanism beside the manual steps for the ruleset and security toggles its GitHub provider does not cover. One `gh` script does all of it in one place with no state. If the project ever grows real infrastructure, Alchemy can come back.
 
@@ -56,11 +56,11 @@ Infisical project `auto-apk`
         `- this machine  your own Infisical machine identity, for local test signing
 
 Pullfrog's encrypted store (outside Infisical, see "AI pull request review")
-   Grok sign-in, Claude subscription token
+   Grok sign-in
         `- released only to a run of this repo's pullfrog.yml that proves itself with OIDC
 ```
 
-- One machine identity, read-only on `/signing`. Its OIDC rule must match the subject `repo:<owner>/auto-apk:environment:release` exactly, not just the repository. `pullfrog.yml` also runs on `main` with `id-token: write`; a rule bound only to the repository would let that job, or the agent inside it, ask for the keystore.
+- One machine identity, read-only on `/signing`. Its OIDC rule must match the subject `repo:teyd@48223730/auto-apk@1454335263:environment:release` exactly, not just the repository. (Repositories created after July 15, 2026 carry the owner and repository IDs in the subject; GitHub reports the prefix at `repos/teyd/auto-apk/actions/oidc/customization/sub`.) The audience is GitHub's default, `https://github.com/teyd`: the varlock plugin requests the token without a custom audience. `pullfrog.yml` also runs on `main` with `id-token: write`; a rule bound only to the repository would let that job, or the agent inside it, ask for the keystore.
 - One schema file, `.env.schema`, for the signing secrets.
 - The `build` job has no identity and no `id-token` permission, so code that handles downloads and third-party bundles cannot ask Infisical for anything.
 - This machine's identity is the one credential that exists outside Infisical. It stays in a git-ignored `.env.local` and is needed only for local signing tests.
@@ -383,7 +383,7 @@ Each workflow job calls one subcommand, and the same subcommands run locally.
 
 **Phase 0: source bake-off.** Decided (see "Phase 0"); two confirming daily runs left. Still needs your phone for the install and keystore tests.
 
-**Phase 1: scaffold, repo and config.** In progress since 2026-11-11: repo `teyd/auto-apk` is public and `scripts/setup-repo.sh` has been applied (without Pullfrog). Remaining: Pullfrog app and subscriptions, Infisical project and identity, Renovate app. Bun project, `@effect/tsgo`, oxlint, oxfmt, `Config.ts`, generated schema, `auto-apk.json` for 8 apps. Then secrets: the Infisical project, its one machine identity, `.env.schema`. Then the repository: `scripts/setup-repo.sh`, the `main` ruleset, community files, `renovate.json`, `ci.yml`. Then review: install the Pullfrog app, connect the Grok and Claude subscriptions, add `pullfrog.yml` and `AGENTS.md`, and check a first review on a test pull request. From here on every change goes through a pull request.
+**Phase 1: scaffold, repo and config.** In progress since 2026-11-11: repo `teyd/auto-apk` is public and `scripts/setup-repo.sh` has been applied (without Pullfrog). Renovate app installed; Grok connected to Pullfrog. Remaining: install the Pullfrog app on the repo, the Infisical project and identity. Bun project, `@effect/tsgo`, oxlint, oxfmt, `Config.ts`, generated schema, `auto-apk.json` for 8 apps. Then secrets: the Infisical project, its one machine identity, `.env.schema`. Then the repository: `scripts/setup-repo.sh`, the `main` ruleset, community files, `renovate.json`, `ci.yml`. Then review: install the Pullfrog app, connect the Grok and Claude subscriptions, add `pullfrog.yml` and `AGENTS.md`, and check a first review on a test pull request. From here on every change goes through a pull request.
 
 **Phase 2: build path.** `GitHub`, `Morphe`, `Sources`, `Verify`. Done when `auto-apk build --app x` produces an unsigned patched APK locally and all 8 build, or the gap is named per app.
 
@@ -402,13 +402,13 @@ Pullfrog (`pullfrog/pullfrog`, v0.1.126, docs read 2026-11-11). It is not a mode
 | You have | Role | Why |
 |---|---|---|
 | Grok subscription (SuperGrok or X Premium) | **Writes every review (default).** Smart on the xAI provider picks Grok 4.3 for small or behaviour-free diffs and Grok for larger ones. | Your choice. Runs through OpenCode, since Pullfrog uses a vendor's own agent only for Anthropic and OpenAI models. |
-| Claude subscription | **Second opinion.** Before posting, the review sends each finding to Claude Sonnet and drops any it cannot re-verify. | This is the pass CodeRabbit runs to drop findings it cannot support, using quota you already pay for. A different vendor's model catches different mistakes. It also keeps the Claude connection in use. |
+| Claude subscription | Not connected | You chose Grok only. There is no second-opinion pass; Pullfrog can add one later if a second credential is connected. |
 | OpenCode subscription | Not used | Go offers GLM, Kimi, Qwen and similar, and Grok already covers every rung of the ladder at no extra cost. Kept as an option if Grok quota ever runs short. |
 | OpenRouter | Not used | Pullfrog falls back only between credentials of the same provider. An OpenRouter key would never stand in for a Grok run that hit its limit. It would help only as a paid primary, and that is what the subscriptions make unnecessary. |
 
 **Two things to know about Grok as the default.**
 - **Its sign-in rotates.** An xAI access token lasts about six hours, and xAI replaces the refresh token every time it is used. Pullfrog refreshes before each run and saves the new token after. If the repo goes quiet long enough for the refresh token to lapse at xAI, the next review fails with `GROK_AUTH_JSON was rejected by xAI`. The fix is to run `npx pullfrog auth grok` again. Renovate's weekly pull requests do not start reviews, so they do not keep it alive. If it lapses often, add an `XAI_API_KEY` as the fallback, which Pullfrog tries next on its own, at API prices.
-- **Usage limits.** When the Grok plan hits its usage window, the run fails with a comment saying so. Re-trigger with `@pullfrog review` after the reset, or once with `--sonnet` to use Claude instead. The review is not a required check, so neither case ever blocks a merge.
+- **Usage limits.** When the Grok plan hits its usage window, the run fails with a comment saying so. Re-trigger with `@pullfrog review` after the reset. The review is not a required check, so neither case ever blocks a merge.
 
 Quota use stays small. About 15 pull requests a month, most of them one-line Renovate bumps, which are not reviewed at all (see below).
 
@@ -429,7 +429,7 @@ The Pullfrog CLI reads and writes the same settings as the web console, so `scri
 | `mention.enabled` | `true`; `mention.non-collaborators` `false` | You can ask `@pullfrog` a question on a pull request; strangers cannot |
 | `address-reviews.enabled`, `fix-ci.*` | `false` | It does not write code here |
 | `issue.mode` | `none`; `label.enabled` `false` | No issue triage |
-| `instructions` | Ask Claude Sonnet to refute each finding before posting, at most 6 asks per run | The second opinion |
+| `instructions` | unset | No standing instructions beyond the review prompt |
 | `prompts.review` | From `.github/pullfrog/review.md` | What to look hardest at; see below |
 
 "Include PRs opened by bots" stays off, its default, so Renovate's pull requests get no review; CI checks those.
@@ -490,14 +490,13 @@ What stops a hostile pull request from doing harm through the reviewer:
 ### One-time setup, by you
 
 1. Install the Pullfrog GitHub App on your account with access to `auto-apk` only.
-2. In a clone of the repo: `npx pullfrog auth grok` (device code, works over SSH).
-3. `npx pullfrog auth claude`. On a machine without a browser, use `--paste-token` with the output of `claude setup-token` from a machine that has one.
-4. Merge `pullfrog.yml`, then run `scripts/setup-repo.sh` to apply the settings above.
+2. In a clone of the repo: `npx pullfrog auth grok` (device code, works over SSH). Done 2026-11-11.
+3. Merge `pullfrog.yml`, then run `scripts/setup-repo.sh` to apply the settings above.
 
 ## Settled this round
 
 - **Alchemy v2: dropped.** With secrets fetched from Infisical at run time there is nothing left for it to deploy except a handful of repo settings. One `gh` script sets those, and also the ruleset and security toggles Alchemy could not. See "Tools" and "Repository setup".
-- **Pullfrog replaces PR-Agent.** Reviews run on your Grok subscription by default, with Claude as the second opinion. That removes `review.yml`, `.pr_agent.toml`, the OpenRouter key, the varlock GitHub Action, the Infisical `/review` folder, its identity and the second schema file. See "AI pull request review".
+- **Pullfrog replaces PR-Agent.** Reviews run on your Grok subscription only. That removes `review.yml`, `.pr_agent.toml`, the OpenRouter key, the varlock GitHub Action, the Infisical `/review` folder, its identity and the second schema file. See "AI pull request review".
 - **Experimental versions: not used.** Morphe does not use them by default. The CLI lists them only with `--include-experimental`, and Morphe Manager offers them only in Expert mode. So `experimental` stays `false` for every app, YouTube and Reddit included, and builds follow the versions Morphe itself recommends (YouTube 21.30.216, Reddit 2026.40.0 today). The per-app switch stays in the config, unused.
 - **TikTok `trill` variant: not needed.** `com.zhiliaoapp.musically` and `com.ss.android.ugc.trill` are the same app under two package names; Google Play hands out `trill` in some regions, mostly in Asia. A sideloaded `musically` build installs and runs in any region. If your phone currently has the `trill` one, uninstall it once so you do not end up with two TikToks.
 
@@ -516,10 +515,10 @@ None. If the two remaining Phase 0 runs disagree with the first, the source orde
 - Venus's README flags two of its Discord patches as against Discord's rules; patched clients carry account risk on Instagram, Discord and TikTok.
 - Four of six bundle repos are single-maintainer and under three months old. A malicious release would be built; the build job holds no secrets, but the APK would still reach your phone.
 - An AI reviewer reads untrusted pull request text. It cannot push and its shell is sandboxed, so the worst case is a misleading comment.
-- **Pullfrog is a third-party service holding two of your subscription credentials** (Grok, Claude), and its app can dispatch workflows in the repo. A Pullfrog compromise could spend your quota or post comments. It could not reach the keystore, because the Infisical rule requires the `release` environment, and it could not merge, because of the ruleset. To cut it off: remove both connections with `npx pullfrog auth remove`, revoke the Claude token and the Grok sign-in at Anthropic and xAI, and uninstall the app.
+- **Pullfrog is a third-party service holding your Grok subscription credential**, and its app can dispatch workflows in the repo. A Pullfrog compromise could spend your quota or post comments. It could not reach the keystore, because the Infisical rule requires the `release` environment, and it could not merge, because of the ruleset. To cut it off: remove the connection with `npx pullfrog auth remove`, revoke the Grok sign-in at xAI, and uninstall the app.
 - **Infisical is now on the release path.** If it is down, `publish` fails and the next scheduled run rebuilds and retries. Nothing is published unsigned or half-done.
 - **Renovate is a third-party app** with permission to open pull requests. It cannot merge: the `main` ruleset and CI still gate everything, and auto-merge stays off.
 
 ## Not verified
 
-Phase 0 rests on one day; two daily runs remain. Also: the Instagram store version; that APKPure's app API accepts our own client headers the way it accepts apkeep's; how Obtainium detects a changed asset under an unchanged tag; that `list-versions` has no machine-readable output mode. For the review: Pullfrog was read from its docs (docs.pullfrog.com, 2026-11-11) and README, not run; that Smart is free on a personal account, that the CLI keys listed are all writable on a personal repo, how much of the Grok plan a review uses, how long an unused Grok sign-in lasts before it lapses, and that Claude answers as a second opinion reliably are to be confirmed on the first test pull request. For Infisical: its free-plan limits on machine identities, and that a base64 keystore fits in one secret value; the varlock plugin's OIDC path was read from its docs, not run. For `scripts/setup-repo.sh`: the exact `gh api` calls are not written or tried yet. For Renovate: whether it can update the Morphe jar's SHA-256 itself. Morphe's handling of experimental versions is from Morphe Manager's README and the CLI flag, not from running either. Phase 0 ran the Morphe jar and downloaded real APKs, but nothing has been signed or installed yet.
+Phase 0 rests on one day; two daily runs remain. Also: the Instagram store version; that APKPure's app API accepts our own client headers the way it accepts apkeep's; how Obtainium detects a changed asset under an unchanged tag; that `list-versions` has no machine-readable output mode. For the review: Pullfrog was read from its docs (docs.pullfrog.com, 2026-11-11) and README, not run; that Smart is free on a personal account, that the CLI keys listed are all writable on a personal repo, how much of the Grok plan a review uses, how long an unused Grok sign-in lasts before it lapses are to be confirmed on the first test pull request. For Infisical: its free-plan limits on machine identities, and that a base64 keystore fits in one secret value; the varlock plugin's OIDC path was read from its docs, not run. For `scripts/setup-repo.sh`: the exact `gh api` calls are not written or tried yet. For Renovate: whether it can update the Morphe jar's SHA-256 itself. Morphe's handling of experimental versions is from Morphe Manager's README and the CLI flag, not from running either. Phase 0 ran the Morphe jar and downloaded real APKs, but nothing has been signed or installed yet.

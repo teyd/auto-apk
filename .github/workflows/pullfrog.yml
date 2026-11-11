@@ -1,6 +1,6 @@
 # Pullfrog: AI pull request review. The Pullfrog app dispatches this workflow on
 # main when a pull request opens or someone mentions @pullfrog. A pull request
-# cannot change the workflow that reviews it. Credentials (Grok, Claude) live in
+# cannot change the workflow that reviews it. The Grok credential lives in
 # Pullfrog's own store and are released only to an OIDC-verified run of this repo.
 name: Pullfrog
 run-name: ${{ inputs.name || github.workflow }}

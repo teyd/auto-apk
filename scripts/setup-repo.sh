@@ -94,7 +94,7 @@ if [ -n "${SKIP_PULLFROG:-}" ]; then
   exit 0
 fi
 
-step "Pullfrog: review only, Grok by default, no pushes, ignore strangers and bots"
+step "Pullfrog: review only, Grok only, no pushes, ignore strangers and bots"
 pf() { npx --yes pullfrog@latest config set "$@" --repo "$REPO" --yes; }
 pf review.mode agent
 pf review.re-review true
@@ -115,7 +115,7 @@ pf fix-ci.reviewed-prs false
 pf issue.mode none
 pf issue.non-collaborators false
 pf label.enabled false
-pf instructions --file .github/pullfrog/instructions.md
+npx --yes pullfrog@latest config unset instructions --repo "$REPO" --yes
 pf prompts.review --file .github/pullfrog/review.md
 
 cat <<'NOTE'
