@@ -14,7 +14,8 @@ record of decisions.
   `build`, `publish` come later).
 - `src/Morphe.ts` (to come) is the only file that runs the Morphe jar.
 - `.env.schema`: signing secrets, declared for varlock; values live in Infisical.
-  `src/env.generated.ts` is generated from it (`bunx varlock codegen`).
+  `src/env.generated.ts` is generated from it (`bun run env:codegen`; the
+  Infisical IDs are placeholders there because code generation needs none).
 - `scripts/setup-repo.sh`: GitHub and Pullfrog settings, applied by the owner.
 
 ## Rules that must not be weakened
