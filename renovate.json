@@ -1,0 +1,47 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests", ":dependencyDashboard"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "Etc/UTC",
+  "minimumReleaseAge": "3 days",
+  "automerge": false,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "minimumReleaseAge": null,
+    "schedule": ["at any time"]
+  },
+  "packageRules": [
+    {
+      "description": "Non-major updates together in one weekly pull request",
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "groupName": "non-major"
+    },
+    {
+      "description": "The tools in auto-apk.json are reviewed one at a time",
+      "matchFileNames": ["auto-apk.json"],
+      "groupName": null,
+      "commitMessageTopic": "{{depName}}"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Morphe CLI version in auto-apk.json. CI then fails until tools.morphe.sha256 matches the new jar, and prints the hash to copy.",
+      "managerFilePatterns": ["/^auto-apk\\.json$/"],
+      "matchStrings": [
+        "\"morphe\":\\s*\\{\\s*\"repo\":\\s*\"(?<depName>[^\"]+)\",\\s*\"version\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v?(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "FlareSolverr image tag and digest in auto-apk.json",
+      "managerFilePatterns": ["/^auto-apk\\.json$/"],
+      "matchStrings": [
+        "\"image\":\\s*\"(?<depName>ghcr\\.io/flaresolverr/flaresolverr):(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\""
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ]
+}

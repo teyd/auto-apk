@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/@effect/tsgo/oxlint-schema.json",
+  "extends": ["./node_modules/@effect/tsgo/oxlint-presets/strict.json"],
+  "categories": { "correctness": "error", "suspicious": "warn" },
+  "rules": {
+    // effect/cli, FileSystem and @effect/platform-bun are marked unstable in Effect 4.1,
+    // and they are the modules this project chose on purpose. Breakage shows up as a
+    // type error when Renovate bumps effect, so the per-call warning adds nothing.
+    "effecttsgo/unstable-api-usage": "off"
+  },
+  "overrides": [
+    {
+      "files": ["test/**"],
+      "rules": { "typescript/no-unsafe-type-assertion": "off", "typescript/no-explicit-any": "off" }
+    }
+  ],
+  "ignorePatterns": ["node_modules", "schema", "src/env.generated.ts"]
+}

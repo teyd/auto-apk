@@ -1,0 +1,101 @@
+name: ci
+
+on:
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # One job, so the ruleset can require one check. It always runs, so a pull
+  # request that only touches docs still reports; the steps below skip then.
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Only docs changed?
+        id: changes
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          if git diff --name-only "$BASE" HEAD | grep -qvE '(\.md$|^LICENSE$|^\.github/(CODEOWNERS|pull_request_template\.md)$)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Only documentation changed; skipping checks."
+          fi
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: steps.changes.outputs.code == 'true'
+        with:
+          bun-version-file: package.json
+
+      - name: Install
+        if: steps.changes.outputs.code == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Type check
+        if: steps.changes.outputs.code == 'true'
+        run: bun run typecheck
+
+      - name: Lint
+        if: steps.changes.outputs.code == 'true'
+        run: bun run lint
+
+      - name: Format
+        if: steps.changes.outputs.code == 'true'
+        run: bun run fmt:check
+
+      - name: Test
+        if: steps.changes.outputs.code == 'true'
+        run: bun test
+
+      - name: Schema is current
+        if: steps.changes.outputs.code == 'true'
+        run: bun src/main.ts schema --check
+
+      - name: Config is valid
+        if: steps.changes.outputs.code == 'true'
+        run: bun src/main.ts check
+
+      - name: Morphe jar matches tools.morphe.sha256
+        if: steps.changes.outputs.code == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repo=$(jq -r .tools.morphe.repo auto-apk.json)
+          version=$(jq -r .tools.morphe.version auto-apk.json)
+          pattern=$(jq -r .tools.morphe.asset auto-apk.json)
+          want=$(jq -r .tools.morphe.sha256 auto-apk.json)
+          asset=$(gh release view "v$version" -R "$repo" --json assets -q '.assets[].name' | grep -E "$pattern" | head -1)
+          [ -n "$asset" ] || { echo "::error::No asset matching $pattern in $repo v$version"; exit 1; }
+          gh release download "v$version" -R "$repo" -p "$asset" -D "$RUNNER_TEMP/morphe"
+          got=$(sha256sum "$RUNNER_TEMP/morphe/$asset" | cut -d' ' -f1)
+          if [ "$got" != "$want" ]; then
+            echo "::error file=auto-apk.json::tools.morphe.sha256 does not match $asset. Set it to: $got"
+            exit 1
+          fi
+          echo "$asset matches $want"
+
+      - name: actionlint
+        if: steps.changes.outputs.code == 'true'
+        run: >
+          docker run --rm -v "$PWD:/repo" -w /repo
+          rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -color
+
+      - name: zizmor
+        if: steps.changes.outputs.code == 'true'
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          advanced-security: false

@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/teyd/auto-apk/main/schema/auto-apk.schema.json",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "configVersion": {
+      "type": "number",
+      "enum": [
+        1
+      ],
+      "description": "Format version of this file."
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "morphe": {
+          "type": "object",
+          "properties": {
+            "repo": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\\/[A-Za-z0-9._-]{1,100}$",
+              "description": "GitHub repository that publishes the Morphe CLI jar."
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Release tag of the CLI, without a leading v."
+            },
+            "asset": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Regex that picks the jar among the release assets."
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "description": "SHA-256 of the jar. A download that does not match is rejected."
+            },
+            "java": {
+              "type": "integer",
+              "minimum": 17,
+              "maximum": 99,
+              "description": "Java major version the CLI needs."
+            },
+            "jvmArgs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Extra JVM arguments for patching, such as -Xmx4g."
+            }
+          },
+          "required": [
+            "repo",
+            "version",
+            "asset",
+            "sha256",
+            "java",
+            "jvmArgs"
+          ],
+          "additionalProperties": false,
+          "description": "The Morphe CLI. Everything Morphe-specific outside src/Morphe.ts lives here."
+        },
+        "flaresolverr": {
+          "type": "object",
+          "properties": {
+            "image": {
+              "type": "string",
+              "pattern": "^[^\\s@]+@sha256:[0-9a-f]{64}$",
+              "description": "Container image, pinned by digest (name:tag@sha256:...)."
+            }
+          },
+          "required": [
+            "image"
+          ],
+          "additionalProperties": false,
+          "description": "FlareSolverr, which gets APKMirror pages past Cloudflare."
+        }
+      },
+      "required": [
+        "morphe",
+        "flaresolverr"
+      ],
+      "additionalProperties": false,
+      "description": "Exact versions of the tools that run. Renovate keeps these current."
+    },
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether an app is built."
+        },
+        "arch": {
+          "type": "string",
+          "enum": [
+            "arm64-v8a",
+            "armeabi-v7a",
+            "x86_64",
+            "x86"
+          ],
+          "description": "The one CPU architecture kept in the patched APK (Morphe --striplibs)."
+        },
+        "experimental": {
+          "type": "boolean",
+          "description": "Let Morphe offer versions its patches mark experimental (--include-experimental)."
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "App version to build. \"auto\" asks Morphe which version the current patches support best. Any other value holds that exact version."
+        },
+        "sources": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "string",
+              "enum": [
+                "apkmirror",
+                "apkpure",
+                "archive"
+              ],
+              "description": "Where a stock APK can come from. apkmirror: APKMirror through FlareSolverr. apkpure: APKPure's app API. archive: an archive.org directory of APKs."
+            }
+          ],
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "apkmirror",
+              "apkpure",
+              "archive"
+            ],
+            "description": "Where a stock APK can come from. apkmirror: APKMirror through FlareSolverr. apkpure: APKPure's app API. archive: an archive.org directory of APKs."
+          },
+          "description": "Order in which sources are tried. A source an app does not list is skipped."
+        },
+        "patches": {
+          "type": "object",
+          "properties": {
+            "asset": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Regex that picks the patch bundle among the release assets."
+            },
+            "channel": {
+              "type": "string",
+              "enum": [
+                "stable",
+                "prerelease"
+              ],
+              "description": "Which patch releases to follow: the latest stable release, or the latest pre-release."
+            }
+          },
+          "required": [
+            "asset",
+            "channel"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "enabled",
+        "arch",
+        "experimental",
+        "version",
+        "sources",
+        "patches"
+      ],
+      "additionalProperties": false,
+      "description": "What applies to every app unless the app repeats the key."
+    },
+    "publish": {
+      "type": "object",
+      "properties": {
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\\/[A-Za-z0-9._-]{1,100}$",
+          "description": "Repository whose release receives the APKs."
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tag of the one rolling release."
+        },
+        "asset": {
+          "type": "string",
+          "pattern": "\\{app\\}",
+          "allOf": [
+            {
+              "pattern": "\\{appVersion\\}",
+              "description": "File name of each APK. Placeholders: {app}, {appVersion}, {patchesVersion}, {arch}. {app} and {appVersion} are required."
+            }
+          ]
+        }
+      },
+      "required": [
+        "repo",
+        "tag",
+        "asset"
+      ],
+      "additionalProperties": false,
+      "description": "Where results go and how files are named."
+    },
+    "apps": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z0-9][a-z0-9-]*$": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Display name."
+            },
+            "package": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9_]*(?:\\.[a-zA-Z][a-zA-Z0-9_]*)+$",
+              "description": "Android package name, for example com.google.android.youtube."
+            },
+            "patches": {
+              "type": "object",
+              "properties": {
+                "repo": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\\/[A-Za-z0-9._-]{1,100}$",
+                  "description": "GitHub repository that publishes the patch bundle."
+                },
+                "asset": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "A JavaScript regular expression, matched against release asset names."
+                },
+                "channel": {
+                  "type": "string",
+                  "enum": [
+                    "stable",
+                    "prerelease"
+                  ],
+                  "description": "Which patch releases to follow: the latest stable release, or the latest pre-release."
+                }
+              },
+              "required": [
+                "repo"
+              ],
+              "additionalProperties": false,
+              "description": "The app's patch bundle. asset and channel default to defaults.patches."
+            },
+            "signature": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "description": "SHA-256 of the publisher's original signing certificate. Every downloaded APK and split must carry it among its signers."
+            },
+            "sources": {
+              "type": "object",
+              "properties": {
+                "apkmirror": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "pattern": "^https:\\/\\/www\\.apkmirror\\.com\\/apk\\/[^/]+\\/[^/]+\\/$",
+                      "description": "The app's APKMirror page, https://www.apkmirror.com/apk/<developer>/<app>/"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "additionalProperties": false
+                },
+                "apkpure": {
+                  "not": {
+                    "type": "null"
+                  },
+                  "description": "APKPure needs no link; the package name is enough. Write {} to use it."
+                },
+                "archive": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "pattern": "^https:\\/\\/archive\\.org\\/download\\/\\S+$",
+                      "description": "An archive.org directory listing of this app's APKs."
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false,
+              "description": "Where this app can be downloaded. The order comes from defaults.sources."
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "arch": {
+              "type": "string",
+              "enum": [
+                "arm64-v8a",
+                "armeabi-v7a",
+                "x86_64",
+                "x86"
+              ],
+              "description": "The one CPU architecture kept in the patched APK (Morphe --striplibs)."
+            },
+            "experimental": {
+              "type": "boolean"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "description": "App version to build. \"auto\" asks Morphe which version the current patches support best. Any other value holds that exact version."
+            }
+          },
+          "required": [
+            "name",
+            "package",
+            "patches",
+            "signature",
+            "sources"
+          ],
+          "additionalProperties": false,
+          "description": "One app. Any key from defaults may be repeated here to override it."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "configVersion",
+    "tools",
+    "defaults",
+    "publish",
+    "apps"
+  ],
+  "additionalProperties": false,
+  "title": "auto-apk configuration",
+  "description": "Which apps auto-apk builds, and how."
+}

@@ -1,0 +1,123 @@
+{
+  "$schema": "./schema/auto-apk.schema.json",
+  "configVersion": 1,
+
+  "tools": {
+    "morphe": {
+      "repo": "MorpheApp/morphe-desktop",
+      "version": "2.1.1",
+      "asset": "^morphe-desktop-.*-all\\.jar$",
+      "sha256": "3a2efefd567b44dde15971a58d5aa649a32aba30781d3400dc08d688c720168f",
+      "java": 21,
+      "jvmArgs": ["-Xmx4g"]
+    },
+    "flaresolverr": {
+      "image": "ghcr.io/flaresolverr/flaresolverr:v3.5.2@sha256:c80ae007ce2ccdcd217a12426e4f039ef763ff90738c808d38810c3e59323767"
+    }
+  },
+
+  "defaults": {
+    "enabled": true,
+    "arch": "arm64-v8a",
+    "experimental": false,
+    "version": "auto",
+    "sources": ["apkmirror", "apkpure", "archive"],
+    "patches": { "asset": "^patches.*\\.mpp$", "channel": "stable" }
+  },
+
+  "publish": {
+    "repo": "teyd/auto-apk",
+    "tag": "latest",
+    "asset": "{app}-{appVersion}-p{patchesVersion}-{arch}.apk"
+  },
+
+  "apps": {
+    "youtube": {
+      "name": "YouTube",
+      "package": "com.google.android.youtube",
+      "patches": { "repo": "MorpheApp/morphe-patches" },
+      "signature": "3d7a1223019aa39d9ea0e3436ab7c0896bfb4fb679f4de5fe7c23f326c8f994a",
+      "sources": {
+        "apkmirror": { "url": "https://www.apkmirror.com/apk/google-inc/youtube/" },
+        "apkpure": {},
+        "archive": {
+          "url": "https://archive.org/download/jhc-apks/apks/com.google.android.youtube"
+        }
+      }
+    },
+    "reddit": {
+      "name": "Reddit",
+      "package": "com.reddit.frontpage",
+      "patches": { "repo": "MorpheApp/morphe-patches" },
+      "signature": "970b91143813b4c9d5f3634f672c9fcaa5621b4efaaedafd6c235cbbb869736f",
+      "sources": {
+        "apkmirror": { "url": "https://www.apkmirror.com/apk/redditinc/reddit/" },
+        "apkpure": {},
+        "archive": { "url": "https://archive.org/download/jhc-apks/apks/com.reddit.frontpage" }
+      }
+    },
+    "x": {
+      "name": "X",
+      "package": "com.twitter.android",
+      "patches": { "repo": "crimera/piko-newx" },
+      "signature": "0fd9a0cfb07b65950997b4eaebdc53931392391aa406538a3b04073bc2ce2fe9",
+      "sources": {
+        "apkmirror": { "url": "https://www.apkmirror.com/apk/x-corp/twitter/" },
+        "apkpure": {},
+        "archive": { "url": "https://archive.org/download/jhc-apks/apks/com.twitter.android" }
+      }
+    },
+    "instagram": {
+      "name": "Instagram",
+      "package": "com.instagram.android",
+      "patches": { "repo": "crimera/piko" },
+      "signature": "5f3e50f435583c9ae626302a71f7340044087a7e2c60adacfc254205a993e305",
+      "sources": {
+        "apkmirror": { "url": "https://www.apkmirror.com/apk/instagram/instagram-instagram/" },
+        "apkpure": {}
+      }
+    },
+    "gboard": {
+      "name": "Gboard",
+      "package": "com.google.android.inputmethod.latin",
+      "patches": { "repo": "jasonwu1994/Gboard-patches" },
+      "signature": "f0fd6c5b410f25cb25c3b53346c8972fae30f8ee7411df910480ad6b2d60db83",
+      "sources": {
+        "apkmirror": { "url": "https://www.apkmirror.com/apk/google-inc/gboard/" },
+        "apkpure": {}
+      }
+    },
+    "discord": {
+      "name": "Discord",
+      "package": "com.discord",
+      "patches": { "repo": "VenusIsJaded/Venus-Patches" },
+      "signature": "3c39d23cf9367849a5c699395647fe0e5bfea5a1f1f40d8c717ddc70f8bfa113",
+      "sources": {
+        "apkmirror": { "url": "https://www.apkmirror.com/apk/discord/discord-chat-for-gamers/" },
+        "apkpure": {}
+      }
+    },
+    "tiktok": {
+      "name": "TikTok",
+      "package": "com.zhiliaoapp.musically",
+      "patches": { "repo": "SysAdminDoc/HushFeed" },
+      "signature": "9041803e91bcb814b4b4399fb5c85a91640b755e5e8ba76813814bf4cf2ab5ba",
+      "sources": {
+        "apkmirror": {
+          "url": "https://www.apkmirror.com/apk/tiktok-pte-ltd/tik-tok-including-musical-ly/"
+        },
+        "apkpure": {}
+      }
+    },
+    "twitch": {
+      "name": "Twitch",
+      "package": "tv.twitch.android.app",
+      "patches": { "repo": "jordanwoodson/lurk-morphe-patches" },
+      "signature": "1338f9b049893cc70b78432a177582f90bd4bc6296ea4ed35bcc7df59687ac53",
+      "sources": {
+        "apkmirror": { "url": "https://www.apkmirror.com/apk/twitch-interactive-inc/twitch/" },
+        "apkpure": {}
+      }
+    }
+  }
+}

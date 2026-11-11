@@ -1,0 +1,19 @@
+node_modules/
+work/
+out/
+*.apk
+*.apkm
+*.xapk
+*.jar
+*.mpp
+
+# Signing material never enters git
+*.jks
+*.p12
+*.pfx
+*.bks
+*.keystore
+
+# varlock: local identity and overrides
+.env.local
+.env.*.local

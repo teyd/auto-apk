@@ -1,0 +1,9 @@
+* text=auto eol=lf
+bun.lock linguist-generated
+schema/*.json linguist-generated
+*.apk binary
+*.apkm binary
+*.xapk binary
+*.jks binary
+*.p12 binary
+*.keystore binary
