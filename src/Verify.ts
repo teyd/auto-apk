@@ -128,10 +128,10 @@ export const verify = Effect.fn("Verify.verify")(function* (
   const certificates = new Set<string>()
   let pinMissing = 0
   for (const apk of apks) {
-    const { exitCode, output } = yield* run("apksigner", ["verify", "--print-certs", apk])
-    const certs = parseSignerCerts(output)
+    const signer = yield* run("apksigner", ["verify", "--print-certs", apk])
+    const certs = parseSignerCerts(signer.output)
     certs.forEach((c) => certificates.add(c))
-    if (exitCode !== 0) problems.push(`${path.basename(apk)}: signature does not verify`)
+    if (signer.exitCode !== 0) problems.push(`${path.basename(apk)}: signature does not verify`)
     else if (!certs.includes(want.signature)) pinMissing++
   }
   if (pinMissing > 0) {
