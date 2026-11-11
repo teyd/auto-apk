@@ -115,8 +115,9 @@ jobs:
 
   publish:
     needs: [plan, build]
-    # Runs when at least one leg may have built; sign skips apps that did not.
-    if: always() && needs.plan.outputs.any == 'true'
+    # Runs after failed legs too (sign skips apps that did not build), but not
+    # after a cancel: cancelling must never publish.
+    if: ${{ !cancelled() && needs.plan.outputs.any == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: release
@@ -180,7 +181,7 @@ jobs:
 
   report:
     needs: [plan, build, publish]
-    if: always() && needs.plan.outputs.any == 'true'
+    if: ${{ !cancelled() && needs.plan.outputs.any == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

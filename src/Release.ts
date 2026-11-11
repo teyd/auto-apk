@@ -58,27 +58,22 @@ export const publish = Effect.fn("publish")(function* (
       "--latest",
     ])
   }
+  // Nothing signed: leave the release, manifest and notes exactly as they are.
+  if (signed.apks.length === 0) return []
+
   const manifest = yield* readManifest(repo, tag)
   const apps = { ...manifest.apps }
   const published: Array<string> = []
+  const replaced: Array<string> = []
 
+  // 1. Upload every new APK. Nothing is removed yet, so a failure here leaves the
+  //    release exactly as it was, plus some new files.
   for (const apk of signed.apks) {
     const record = records.find((r) => r.app === apk.app)
     if (!record?.version || !record.inputKey) continue
     yield* gh(["release", "upload", tag, "-R", repo, "--clobber", path.join(signedDir, apk.asset)])
-
-    // Remove this app's previous files only after the new one is up.
-    const release = yield* GitHub.findRelease(repo, tag)
-    const old = Option.match(release, {
-      onNone: () => [],
-      onSome: (r) =>
-        r.assets.filter(
-          (a) =>
-            a.name.startsWith(`${apk.app}-`) && a.name.endsWith(".apk") && a.name !== apk.asset,
-        ),
-    })
-    for (const a of old) yield* gh(["release", "delete-asset", tag, a.name, "-R", repo, "--yes"])
-
+    const previous = manifest.apps[apk.app]?.asset
+    if (previous && previous !== apk.asset) replaced.push(previous)
     apps[apk.app] = {
       appVersion: record.version,
       patches: {
@@ -93,11 +88,11 @@ export const publish = Effect.fn("publish")(function* (
       builtAt: record.finishedAt,
     }
     published.push(apk.app)
-    yield* Effect.log(
-      `${apk.app}: published ${apk.asset}${old.length ? `, removed ${old.map((a) => a.name).join(", ")}` : ""}`,
-    )
+    yield* Effect.log(`${apk.app}: uploaded ${apk.asset}`)
   }
+  if (published.length === 0) return []
 
+  // 2. Point the index (manifest.json and the notes) at the new files.
   const next: Manifest = { manifestVersion: 1, apps }
   const dir = yield* fs.makeTempDirectoryScoped({ prefix: "release-" })
   const manifestFile = path.join(dir, MANIFEST_ASSET)
@@ -106,5 +101,12 @@ export const publish = Effect.fn("publish")(function* (
   const notesFile = path.join(dir, "notes.md")
   yield* fs.writeFileString(notesFile, releaseNotes(config, next, signed.certificateSha256))
   yield* gh(["release", "edit", tag, "-R", repo, "--notes-file", notesFile])
+
+  // 3. Only now remove the files the previous manifest named. A failure here leaves
+  //    an orphaned old file, never a link to a missing one.
+  for (const name of replaced) {
+    yield* gh(["release", "delete-asset", tag, name, "-R", repo, "--yes"])
+    yield* Effect.log(`removed ${name}`)
+  }
   return published
 }, Effect.scoped)

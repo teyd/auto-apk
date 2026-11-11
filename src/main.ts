@@ -268,7 +268,10 @@ const sign = Command.make(
       const records = [...(yield* findRecords(flags.records)).values()].filter(
         (r) => r.status === "built",
       )
-      const files = yield* fs.readDirectory(flags.unsigned, { recursive: true })
+      // No unsigned/ at all when every leg failed: nothing to sign, not an error.
+      const files = yield* fs
+        .readDirectory(flags.unsigned, { recursive: true })
+        .pipe(Effect.orElseSucceed((): Array<string> => []))
       const items: Array<Parameters<typeof signAll>[0][number]> = []
       for (const record of records) {
         const file = files.find((f) => f.endsWith(`${record.app}-unsigned.apk`))
