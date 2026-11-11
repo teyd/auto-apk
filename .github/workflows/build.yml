@@ -17,7 +17,9 @@ on:
         required: false
         default: ""
         type: string
-  # schedule: added together with the publish job.
+  schedule:
+    # Every 6 hours, off the hour. Most runs end after plan (nothing changed).
+    - cron: "23 */6 * * *"
 
 permissions: {}
 
