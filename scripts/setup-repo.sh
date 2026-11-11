@@ -98,7 +98,9 @@ step "Pullfrog: review only, Grok only, no pushes, ignore strangers and bots"
 pf() { npx --yes pullfrog@latest config set "$@" --repo "$REPO" --yes; }
 pf oss false # never fall back to models Pullfrog funds; Grok only
 pf review.mode agent
-pf review.re-review true
+# After fixing review findings, the author comments `@pullfrog review` once,
+# so fix-up commits do not start fresh runs.
+pf review.re-review false
 pf review.non-collaborators false
 pf review.drafts false
 pf review.own-prs false
@@ -125,4 +127,6 @@ Done. Two Pullfrog settings are not in its CLI and are set once in the console
 (pullfrog.com/console -> auto-apk -> Agent):
   - Provider: xAI (your Grok subscription)
   - Model: Smart (the CLI shows this as "auto/xai")
+  - Smart's guidance for the pick: paste the contents of
+    .github/pullfrog/smart-guidance.md into its guidance field
 NOTE

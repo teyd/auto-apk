@@ -419,7 +419,7 @@ The Pullfrog CLI reads and writes the same settings as the web console, so `scri
 |---|---|---|
 | `model` | unset, Smart on the xAI provider | Grok 4.3 and Grok by diff size |
 | `review.mode` | `agent` | Review every new pull request |
-| `review.re-review` | `true` | Each push gets an incremental review of only the new commits. Quota, not money. |
+| `review.re-review` | `false` | Fix-up commits do not start new runs; after fixing findings, comment `@pullfrog review` once |
 | `review.non-collaborators` | `false` | On a public repo, anyone's pull request would otherwise spend your Grok quota |
 | `review.drafts`, `review.approve`, `auto-merge` | `false` | Comments only; you merge |
 | `review.status-check` | `true` | Shows "Pullfrog is running" on the pull request; not made required |
@@ -430,6 +430,8 @@ The Pullfrog CLI reads and writes the same settings as the web console, so `scri
 | `issue.mode` | `none`; `label.enabled` `false` | No issue triage |
 | `instructions` | unset | No standing instructions beyond the review prompt |
 | `prompts.review` | From `.github/pullfrog/review.md` | What to look hardest at; see below |
+
+Smart's guidance for the pick has no CLI key: it lives in `.github/pullfrog/smart-guidance.md` and is pasted into the console.
 
 "Include PRs opened by bots" stays off, its default, so Renovate's pull requests get no review; CI checks those.
 

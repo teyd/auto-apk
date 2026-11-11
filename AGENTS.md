@@ -71,5 +71,17 @@ The `effecttsgo/unstable-api-usage` rule is off: `effect/cli`, `FileSystem` and
 
 Conventional commit titles. Every change goes through a pull request; `ci` must pass.
 
+## Pull requests and review
+
+- Security-relevant pull requests wait for the Pullfrog review before merging:
+  anything touching `src/Verify.ts`, `src/Sign.ts`, `src/Sources.ts`,
+  `src/Morphe.ts`, `src/Release.ts`, `.github/workflows/`, `.env.schema`,
+  `scripts/create-signing-key.sh`, or permissions and secrets.
+- Everything else merges as soon as `ci` is green. Its review lands afterwards;
+  fix the findings in a follow-up pull request.
+- Re-review is off. After addressing findings, push the fixes as one batch and
+  comment `@pullfrog review` once.
+- Batch fixes into one push instead of several small commits.
+
 Keep `README.md` minimal: what it is, the warning, how to install, and links. Details
 belong in `AGENTS.md` (for working on the repo) and `PLAN.md` (design and decisions).
