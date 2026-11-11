@@ -32,7 +32,8 @@ export const fingerprint = (record: BuildRecord): string => {
   return hasher.digest("hex").slice(0, 16)
 }
 
-const escapeCell = (s: string) => s.replace(/\|/gu, "\\|").replace(/\n/gu, " ")
+const escapeCell = (s: string) =>
+  s.replace(/\\/gu, "\\\\").replace(/\|/gu, "\\|").replace(/\n/gu, " ")
 
 export const issueBody = (record: BuildRecord, runUrl: string): string => {
   const pin = record.attempts.some((a) => a.pinMismatch)
@@ -82,32 +83,29 @@ export const missingRecord = (app: string): BuildRecord => ({
 
 const BuildRecordJson = Schema.fromJsonString(BuildRecord)
 
-/** Read `<dir>/<app>/build.json` for each app; a missing or unreadable one becomes a failure. */
+/**
+ * Find every build.json under `dir` and match it to its app by the app it names, not
+ * by its path: download-artifact unpacks a single matching artifact straight into
+ * `dir` and several into `dir/<artifact>/`. An app with no readable record becomes
+ * a failure, so a crashed leg is reported rather than silently skipped.
+ */
 export const readRecords = Effect.fn("readRecords")(function* (
   dir: string,
   apps: ReadonlyArray<string>,
 ) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
-  const records: Array<BuildRecord> = []
-  for (const app of apps) {
-    // Locally <dir>/<app>/build.json; downloaded artifacts land in <dir>/record-<app>/.
-    const candidates = [
-      path.join(dir, app, "build.json"),
-      path.join(dir, `record-${app}`, "build.json"),
-    ]
-    let text: Option.Option<string> = Option.none()
-    for (const file of candidates) {
-      if (Option.isNone(text)) text = yield* fs.readFileString(file).pipe(Effect.option)
-    }
-    if (Option.isNone(text)) {
-      records.push(missingRecord(app))
-      continue
-    }
+  const found = new Map<string, BuildRecord>()
+  const files = (yield* fs
+    .readDirectory(dir, { recursive: true })
+    .pipe(Effect.orElseSucceed(() => []))).filter((f) => path.basename(f) === "build.json")
+  for (const file of files) {
+    const text = yield* fs.readFileString(path.join(dir, file)).pipe(Effect.option)
+    if (Option.isNone(text)) continue
     const decoded = yield* Schema.decodeEffect(BuildRecordJson)(text.value).pipe(Effect.option)
-    records.push(Option.isSome(decoded) ? decoded.value : missingRecord(app))
+    if (Option.isSome(decoded)) found.set(decoded.value.app, decoded.value)
   }
-  return records
+  return apps.map((app) => found.get(app) ?? missingRecord(app))
 })
 
 export interface ReportAction {

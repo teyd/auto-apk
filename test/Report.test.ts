@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test"
+import { BunServices } from "@effect/platform-bun"
+import { Effect } from "effect"
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type { BuildRecord } from "../src/Build.ts"
-import { fingerprint, issueBody, missingRecord } from "../src/Report.ts"
+import { fingerprint, issueBody, missingRecord, readRecords } from "../src/Report.ts"
 
 const failed = (error: string, pinMismatch = false): BuildRecord => ({
   app: "youtube",
@@ -59,9 +64,45 @@ describe("issueBody", () => {
 
   test("table cells cannot break the table", () => {
     expect(issueBody(failed("a | b\nc"), "https://run")).toContain("a \\| b c")
+    expect(issueBody(failed("a \\| b"), "https://run")).toContain("a \\\\\\| b")
   })
 })
 
 test("a leg without a record counts as a failure", () => {
   expect(missingRecord("tiktok")).toMatchObject({ app: "tiktok", status: "failed" })
+})
+
+describe("readRecords", () => {
+  const built = (app: string): BuildRecord => ({
+    ...failed("x"),
+    app,
+    status: "built",
+    attempts: [],
+  })
+  const read = (dir: string, apps: Array<string>) =>
+    Effect.runPromise(readRecords(dir, apps).pipe(Effect.provide(BunServices.layer)))
+
+  test("one artifact unpacked straight into the folder (a one-app run)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "records-"))
+    writeFileSync(join(dir, "build.json"), JSON.stringify(built("x")))
+    expect((await read(dir, ["x"])).map((r) => r.status)).toEqual(["built"])
+  })
+
+  test("several artifacts in their own folders, and one leg that wrote nothing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "records-"))
+    for (const app of ["x", "twitch"]) {
+      mkdirSync(join(dir, `record-${app}`))
+      writeFileSync(join(dir, `record-${app}`, "build.json"), JSON.stringify(built(app)))
+    }
+    const records = await read(dir, ["x", "twitch", "tiktok"])
+    expect(records.map((r) => `${r.app}:${r.status}`)).toEqual([
+      "x:built",
+      "twitch:built",
+      "tiktok:failed",
+    ])
+  })
+
+  test("a missing folder means every app failed", async () => {
+    expect((await read(join(tmpdir(), "does-not-exist-auto-apk"), ["x"]))[0]?.status).toBe("failed")
+  })
 })
