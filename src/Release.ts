@@ -167,10 +167,16 @@ export const publish = Effect.fn("publish")(function* (
       yield* gh(["release", "delete", previous.release, "-R", repo, "--cleanup-tag", "--yes"])
       yield* Effect.log(`${app}: removed release ${previous.release}`)
     } else if (!previous.release) {
-      yield* gh(["release", "delete-asset", indexTag, previous.asset, "-R", repo, "--yes"]).pipe(
-        Effect.catchTag("CommandFailed", () => Effect.void), // already gone
+      // Skip only when the file is verifiably gone; any failure to delete it fails the
+      // run, because the manifest no longer names it and no later run would retry.
+      const index = yield* GitHub.findRelease(repo, indexTag)
+      const stillThere = Option.exists(index, (r) =>
+        r.assets.some((a) => a.name === previous.asset),
       )
-      yield* Effect.log(`${app}: removed ${previous.asset} from ${indexTag}`)
+      if (stillThere) {
+        yield* gh(["release", "delete-asset", indexTag, previous.asset, "-R", repo, "--yes"])
+        yield* Effect.log(`${app}: removed ${previous.asset} from ${indexTag}`)
+      }
     }
   }
   return published
