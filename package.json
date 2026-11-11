@@ -2,7 +2,7 @@
   "name": "auto-apk",
   "version": "0.0.0",
   "private": true,
-  "description": "Scheduled Morphe patch builds for 8 Android apps, published as one rolling GitHub release.",
+  "description": "Scheduled Morphe patch builds for the Android apps in auto-apk.json, published as GitHub releases for Obtainium. Unofficial.",
   "license": "MIT",
   "bin": {
     "auto-apk": "src/main.ts"

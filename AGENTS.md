@@ -1,10 +1,10 @@
 # auto-apk
 
-A scheduled GitHub Actions pipeline. For each of 8 Android apps it finds the latest
-Morphe patch release, asks Morphe which app version those patches support, downloads a
-genuine stock APK of that version, patches it, signs it with one key, and replaces that
-app's APK in one rolling public release (`latest`). `PLAN.md` is the design and the
-record of decisions.
+A scheduled GitHub Actions pipeline. For each app listed in `auto-apk.json` it finds the
+latest Morphe patch release, asks Morphe which app version those patches support,
+downloads a genuine stock APK of that version, patches it, signs it with one key, and
+publishes it as that app's own release; `latest` is the index. Which apps are built is
+configuration, not code. `PLAN.md` is the design and the record of decisions.
 
 ## Layout
 

@@ -1,4 +1,6 @@
-# auto-apk: automated Morphe patch builds for 8 apps
+# auto-apk: automated Morphe patch builds
+
+Which apps are built is configuration (`auto-apk.json`). The 8 named in this plan are the starting set.
 
 ## Goal
 

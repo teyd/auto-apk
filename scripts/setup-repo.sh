@@ -22,7 +22,7 @@ api() { gh api --silent -H "X-GitHub-Api-Version: 2022-11-28" "$@"; }
 step "Repository settings ($REPO)"
 api -X PATCH "$API" --input - <<'JSON'
 {
-  "description": "Scheduled Morphe patch builds for 8 Android apps, published as one rolling release. Unofficial.",
+  "description": "Scheduled Morphe patch builds for the Android apps in auto-apk.json, published as GitHub releases for Obtainium. Unofficial.",
   "has_issues": true,
   "has_wiki": false,
   "has_projects": false,
