@@ -28,7 +28,11 @@ export const SigningResult = Schema.Struct({
 export type SigningResult = typeof SigningResult.Type
 
 /** A URL-safe file name. GitHub turns spaces in asset names into dots anyway. */
-export const safeName = (s: string) => s.replace(/[^A-Za-z0-9._-]+/gu, "-").replace(/^-+|-+$/gu, "")
+export const safeName = (s: string) =>
+  s
+    .replace(/[^A-Za-z0-9._-]+/gu, "-")
+    .replace(/-{2,}/gu, "-")
+    .replace(/^-+|-+$/gu, "")
 
 export const assetName = (template: string, record: BuildRecord, arch: string): string =>
   template
