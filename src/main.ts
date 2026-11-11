@@ -7,19 +7,23 @@
  *   schema   write schema/auto-apk.schema.json (--check: fail if it is stale)
  *   plan     decide which apps to build (compares inputs with manifest.json)
  *   build    download, verify and patch one app (or all); writes out/<app>/
+ *   sign     sign built APKs with the release key (run inside `varlock run`)
+ *   release  upload signed APKs, replace old ones, write manifest.json and notes
  *   report   open, update or close one issue per app from the build records
- *
- * publish arrives with the keystore.
  */
 import { BunRuntime, BunServices } from "@effect/platform-bun"
-import { Config as EnvConfig, Console, Data, Effect, FileSystem, Option } from "effect"
+import { Config as EnvConfig, Console, Data, Effect, FileSystem, Option, Schema } from "effect"
 import { Command, Flag } from "effect/cli"
 import { FetchHttpClient } from "effect/http"
 import { buildApp } from "./Build.ts"
 import { ConfigError, jsonSchema, loadConfig, resolveApps } from "./Config.ts"
 import { readManifest } from "./Manifest.ts"
 import { planApps } from "./Plan.ts"
-import { readRecords, report, summary } from "./Report.ts"
+import { publish } from "./Release.ts"
+import { findRecords, markUnpublished, readRecords, report, summary } from "./Report.ts"
+import { SigningResult, assetName, signAll } from "./Sign.ts"
+
+const Published = Schema.fromJsonString(Schema.Struct({ apps: Schema.Array(Schema.String) }))
 
 /** Append to a file GitHub Actions reads ($GITHUB_OUTPUT, $GITHUB_STEP_SUMMARY), when set. */
 const appendToEnvFile = (name: string, text: string) =>
@@ -199,6 +203,12 @@ const reportCmd = Command.make(
     apps: Flag.String("apps").pipe(
       Flag.withDescription("App ids the build was asked for, separated by commas."),
     ),
+    published: Flag.String("published").pipe(
+      Flag.withDescription(
+        "published.json from the release step; a built app missing from it counts as failed.",
+      ),
+      Flag.optional,
+    ),
   },
   (flags) =>
     Effect.gen(function* () {
@@ -215,7 +225,19 @@ const reportCmd = Command.make(
       const runUrl = Option.isSome(runId)
         ? `${server}/${repo}/actions/runs/${runId.value}`
         : `${server}/${repo}/actions`
-      const records = yield* readRecords(flags.records, list(flags.apps))
+      const built = yield* readRecords(flags.records, list(flags.apps))
+      // With --published, a built app that is not in the release is a failure too.
+      // A missing or unreadable file means nothing was published.
+      let records: ReadonlyArray<(typeof built)[number]> = built
+      if (Option.isSome(flags.published)) {
+        const fs = yield* FileSystem.FileSystem
+        const published = yield* fs.readFileString(flags.published.value).pipe(
+          Effect.flatMap(Schema.decodeEffect(Published)),
+          Effect.map((p) => p.apps),
+          Effect.orElseSucceed((): ReadonlyArray<string> => []),
+        )
+        records = markUnpublished(built, new Set(published))
+      }
       const actions = yield* report(repo, records, runUrl)
       const text = summary(records, actions)
       yield* Console.log(text)
@@ -223,9 +245,89 @@ const reportCmd = Command.make(
     }),
 ).pipe(Command.withDescription("Open, update or close one issue per app from its build record."))
 
+const sign = Command.make(
+  "sign",
+  {
+    config: configFlag,
+    records: Flag.String("records").pipe(
+      Flag.withDescription("Directory holding the build records."),
+    ),
+    unsigned: Flag.String("unsigned").pipe(
+      Flag.withDescription("Directory holding <app>-unsigned.apk files, at any depth."),
+    ),
+    out: Flag.String("out").pipe(
+      Flag.withDescription("Where the signed APKs and signing.json go."),
+      Flag.withDefault("signed"),
+    ),
+  },
+  (flags) =>
+    Effect.gen(function* () {
+      const cfg = yield* loadConfig(flags.config)
+      const fs = yield* FileSystem.FileSystem
+      const apps = resolveApps(cfg)
+      const records = [...(yield* findRecords(flags.records)).values()].filter(
+        (r) => r.status === "built",
+      )
+      const files = yield* fs.readDirectory(flags.unsigned, { recursive: true })
+      const items: Array<Parameters<typeof signAll>[0][number]> = []
+      for (const record of records) {
+        const file = files.find((f) => f.endsWith(`${record.app}-unsigned.apk`))
+        const app = apps.find((a) => a.id === record.app)
+        if (!file || !app) {
+          yield* Console.error(`${record.app}: built, but its unsigned APK is missing`)
+          continue
+        }
+        items.push({
+          record,
+          unsigned: `${flags.unsigned}/${file}`,
+          asset: assetName(cfg.publish.asset, record, app.arch),
+        })
+      }
+      const result = yield* signAll(items, flags.out)
+      yield* Console.log(`signed: ${result.apks.map((a) => a.asset).join(", ") || "nothing"}`)
+      yield* Console.log(`certificate SHA-256: ${result.certificateSha256}`)
+    }),
+).pipe(
+  Command.withDescription(
+    "Sign built APKs. Reads the keystore from the environment (varlock run).",
+  ),
+)
+
+const releaseCmd = Command.make(
+  "release",
+  {
+    config: configFlag,
+    records: Flag.String("records").pipe(
+      Flag.withDescription("Directory holding the build records."),
+    ),
+    signed: Flag.String("signed").pipe(
+      Flag.withDescription("Output directory of sign."),
+      Flag.withDefault("signed"),
+    ),
+    out: Flag.String("out").pipe(
+      Flag.withDescription("Where to write published.json."),
+      Flag.withDefault("published.json"),
+    ),
+  },
+  (flags) =>
+    Effect.gen(function* () {
+      const cfg = yield* loadConfig(flags.config)
+      const fs = yield* FileSystem.FileSystem
+      const records = [...(yield* findRecords(flags.records)).values()]
+      const signing = yield* fs
+        .readFileString(`${flags.signed}/signing.json`)
+        .pipe(Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(SigningResult))))
+      const published = yield* publish(cfg, records, signing, flags.signed)
+      yield* fs.writeFileString(flags.out, `${JSON.stringify({ apps: published })}\n`)
+      yield* Console.log(`published: ${published.join(", ") || "nothing"}`)
+    }),
+).pipe(
+  Command.withDescription("Upload signed APKs to the release; update manifest.json and the notes."),
+)
+
 const cli = Command.make("auto-apk").pipe(
   Command.withDescription("Automated Morphe patch builds."),
-  Command.withSubcommands([check, schema, plan, build, reportCmd]),
+  Command.withSubcommands([check, schema, plan, build, sign, releaseCmd, reportCmd]),
 )
 
 /** Expected failures print their message and exit 1; anything else keeps its full report. */

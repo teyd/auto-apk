@@ -9,6 +9,7 @@ import { Data, Effect, FileSystem, Path, Schema } from "effect"
 import type { Config, ResolvedApp } from "./Config.ts"
 import * as GitHub from "./GitHub.ts"
 import * as Morphe from "./Morphe.ts"
+import { inputKey } from "./Plan.ts"
 import * as Sources from "./Sources.ts"
 import { verify } from "./Verify.ts"
 
@@ -37,6 +38,8 @@ export const BuildRecord = Schema.Struct({
     sha256: Schema.String,
   }),
   morphe: Schema.String,
+  /** Same key `plan` computes; `publish` stores it in manifest.json. */
+  inputKey: Schema.optionalKey(Schema.String),
   version: Schema.optionalKey(Schema.String),
   expectedPatches: Schema.optionalKey(Schema.Finite),
   appliedPatches: Schema.optionalKey(Schema.Finite),
@@ -122,6 +125,7 @@ export const buildApp = Effect.fn("buildApp")(function* (
       sha256: bundleSha,
     },
     morphe: config.tools.morphe.version,
+    inputKey: inputKey(config, app, { tag: release.tag_name, asset }),
   }
   const finish = (record: Omit<BuildRecord, keyof typeof base | "attempts" | "finishedAt">) =>
     Effect.gen(function* () {
@@ -211,7 +215,9 @@ export const buildApp = Effect.fn("buildApp")(function* (
         })
         return yield* new BuildFailed({ record })
       }
-      const apk = patched.success.apk
+      // Named after the app, so it can be found wherever download-artifact puts it.
+      const apk = path.join(outDir, `${app.id}-unsigned.apk`)
+      yield* fs.rename(patched.success.apk, apk)
       const stat = yield* fs.stat(apk)
       const record = yield* finish({
         status: "built",

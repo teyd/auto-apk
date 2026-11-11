@@ -1,9 +1,11 @@
-# Build pipeline. plan -> build (one leg per app) -> report. publish (signing and
-# the release) arrives with the keystore; until then this runs only on demand.
+# Build pipeline: plan -> build (one leg per app) -> publish -> report.
 #
 # Trust boundaries:
 #   plan, build  contents: read only. build handles untrusted downloads and
 #                third-party patch bundles, so it gets no secrets and no id-token.
+#   publish      environment `release`, the only job Infisical trusts. The keystore
+#                reaches one process (sign, via `varlock run`); the release upload
+#                gets contents: write and never sees it.
 #   report       issues: write and nothing else.
 name: build
 
@@ -106,13 +108,78 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: unsigned-${{ matrix.app }}
-          path: out/${{ matrix.app }}/patched-unsigned.apk
+          path: out/${{ matrix.app }}/${{ matrix.app }}-unsigned.apk
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
 
-  report:
+  publish:
     needs: [plan, build]
+    # Runs when at least one leg may have built; sign skips apps that did not.
+    if: always() && needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write # release assets
+      id-token: write # Infisical login (OIDC) and build attestations
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Tool versions
+        id: tools
+        run: |
+          echo "java=$(jq -r .tools.morphe.java auto-apk.json)" >> "$GITHUB_OUTPUT"
+          find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1 >> "$GITHUB_PATH"
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ steps.tools.outputs.java }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: record-*
+          path: records
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: unsigned-*
+          path: unsigned
+
+      # The only step that sees the keystore: varlock logs in to Infisical with this
+      # job's OIDC token and passes the four signing values to this one process.
+      - name: Sign
+        env:
+          INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
+          INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}
+        run: bunx varlock run -- bun src/main.ts sign --records records --unsigned unsigned --out signed
+
+      - name: Attest
+        if: hashFiles('signed/*.apk') != ''
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: signed/*.apk
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun src/main.ts release --records records --signed signed --out published.json
+
+      - name: Upload published.json
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: published
+          path: published.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  report:
+    needs: [plan, build, publish]
     if: always() && needs.plan.outputs.any == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -131,8 +198,14 @@ jobs:
         with:
           pattern: record-*
           path: records
+      # Missing when publish failed early; report then counts every built app as failed.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: published
+          path: published
       - name: Report
         env:
           GH_TOKEN: ${{ github.token }}
           APPS: ${{ needs.plan.outputs.apps }}
-        run: bun src/main.ts report --records records --apps "$APPS"
+        run: bun src/main.ts report --records records --apps "$APPS" --published published/published.json
