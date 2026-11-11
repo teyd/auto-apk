@@ -340,7 +340,7 @@ Best practice for a one-person public repo that publishes binaries. Everything i
 - `bun.lock` committed; CI installs with `--frozen-lockfile`; Bun version pinned in `package.json`.
 
 **Files**
-- `README.md` (what it builds, installing with Obtainium, changing the config, a disclaimer that the APKs are unofficial).
+- `README.md`, kept minimal: what it is, the unofficial-builds warning, installing with Obtainium, links to the config and `AGENTS.md`. Details live in `AGENTS.md` and `PLAN.md`.
 - `LICENSE` (MIT for this tool's own code unless you prefer another), `SECURITY.md`, `CODEOWNERS`, a short pull request template.
 - `.editorconfig`, `.gitattributes`, `.gitignore` (keystores, `.env.local`, build output).
 

@@ -45,3 +45,6 @@ The `effecttsgo/unstable-api-usage` rule is off: `effect/cli`, `FileSystem` and
 `@effect/platform-bun` are marked unstable in Effect 4.1 and are used on purpose.
 
 Conventional commit titles. Every change goes through a pull request; `ci` must pass.
+
+Keep `README.md` minimal: what it is, the warning, how to install, and links. Details
+belong in `AGENTS.md` (for working on the repo) and `PLAN.md` (design and decisions).
