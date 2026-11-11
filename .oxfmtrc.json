@@ -8,6 +8,7 @@
     "bun.lock",
     ".agents/**",
     ".claude/**",
-    "skills-lock.json"
+    "skills-lock.json",
+    "README.md"
   ]
 }
