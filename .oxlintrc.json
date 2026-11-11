@@ -6,7 +6,9 @@
     // effect/cli, FileSystem and @effect/platform-bun are marked unstable in Effect 4.1,
     // and they are the modules this project chose on purpose. Breakage shows up as a
     // type error when Renovate bumps effect, so the per-call warning adds nothing.
-    "effecttsgo/unstable-api-usage": "off"
+    "effecttsgo/unstable-api-usage": "off",
+    // Effect's tagged types are discriminated by `_tag`; checking it is the idiom.
+    "eslint/no-underscore-dangle": ["warn", { "allow": ["_tag"] }]
   },
   "overrides": [
     {

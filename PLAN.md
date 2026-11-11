@@ -36,7 +36,7 @@ The design rule: Morphe will change again, so everything Morphe-specific lives i
 | varlock 1.24 + `@varlock/infisical-plugin` 2.1 | Use | `.env.schema` declares each secret and where it is in Infisical; `@varlock/effect-plugin` generates a typed Effect `Config` module from it. |
 | varlock GitHub Action 1.0.5 | Not used | Its one job was handing the review key to PR-Agent. Pullfrog keeps its own credentials. |
 | Renovate | Use, instead of Dependabot | Updates packages, actions, image digests and the pinned tools in `auto-apk.json`. |
-| FlareSolverr 3.5.2 (container, pinned by digest) | Use, in the `build` job only | Gets APKMirror pages past Cloudflare from GitHub's runners. The APK itself is then fetched directly with its cookies and user agent. |
+| FlareSolverr 3.5.2 (container, pinned by digest) | Use, in the `build` job only | Gets APKMirror pages past Cloudflare from GitHub's runners. The APK itself is then fetched with curl, using its cookies and user agent. |
 | trawl 1.11 | Dropped after Phase 0 | Blocked on GitHub's runners ("datacenter-ip-blocked") on the pages that mattered, where FlareSolverr got through. |
 | apkeep 1.1.0 | Dropped after Phase 0 | For APKPure it is one API call plus a download. It exits 0 with no file when a version is missing. `Sources.ts` makes the same call itself. |
 | Pullfrog (`pullfrog/pullfrog` action, v0.1.126) | Use | AI pull request review in our own Actions, on your Grok subscription only. Free for a public repo on a personal account. |
@@ -52,8 +52,7 @@ Infisical project `auto-apk`
    /signing    keystore, passwords, alias
         |
         |- publish job   OIDC -> identity bound to environment `release` -> /signing
-        |                loaded by:  varlock run -- bun src/main.ts publish
-        `- this machine  your own Infisical machine identity, for local test signing
+        `                loaded by:  varlock run -- bun src/main.ts publish
 
 Pullfrog's encrypted store (outside Infisical, see "AI pull request review")
    Grok sign-in
@@ -63,7 +62,7 @@ Pullfrog's encrypted store (outside Infisical, see "AI pull request review")
 - One machine identity, read-only on `/signing`. Its OIDC rule must match the subject `repo:teyd@48223730/auto-apk@1454335263:environment:release` exactly, not just the repository. (Repositories created after July 15, 2026 carry the owner and repository IDs in the subject; GitHub reports the prefix at `repos/teyd/auto-apk/actions/oidc/customization/sub`.) The audience is GitHub's default, `https://github.com/teyd`: the varlock plugin requests the token without a custom audience. `pullfrog.yml` also runs on `main` with `id-token: write`; a rule bound only to the repository would let that job, or the agent inside it, ask for the keystore.
 - One schema file, `.env.schema`, for the signing secrets.
 - The `build` job has no identity and no `id-token` permission, so code that handles downloads and third-party bundles cannot ask Infisical for anything.
-- This machine's identity is the one credential that exists outside Infisical. It stays in a git-ignored `.env.local` and is needed only for local signing tests.
+- No identity exists outside GitHub's `release` job. The identity has OIDC auth only (Universal Auth removed, 2026-11-11), so there is no client secret anywhere. Local signing tests use the exported keystore file directly.
 - **The review credentials are the one exception to "Infisical only".** Pullfrog's Grok credential rotates on every refresh, and Pullfrog has to write the new one back after each run. A secret that GitHub or Infisical injects cannot be updated like that, so Pullfrog's docs say to keep subscription credentials in its own store. They can reach nothing in the build: no keystore, no release write.
 
 **The varlock GitHub Action** is no longer needed. Its only job was handing the OpenRouter key to PR-Agent. `publish` keeps using `varlock run`, which gives the keystore to our one signing process and to no other step.
@@ -287,8 +286,8 @@ java <jvmArgs> -jar <jar> patch -p <bundle> --striplibs <arch> -t <temp> --unsig
 
 Order set by Phase 0, tried in turn until one passes the gate below:
 
-1. **APKMirror through FlareSolverr.** The container starts only when this source is reached. App page, release page, variant page and download page go through FlareSolverr's `/v1` API (4 or 5 loads, a 3 s pause between them). The release slug is derived from the app's own release links, never from the sidebars. The variant chosen is APK before bundle, `arm64-v8a` or universal, `nodpi` first. The APK is then fetched directly with FlareSolverr's cookies and user agent. Our own user agent, no borrowed credentials.
-2. **APKPure's app API.** One GET to `api.pureapk.com/m/v3/cms/app_version` with the app's headers, pick the exact version, download. Returns an APK or XAPK. "Version not listed" is a typed error, not a silent empty result.
+1. **APKMirror through FlareSolverr.** The container starts only when this source is reached, and is removed when the build ends. App page, release page, variant page and download page go through FlareSolverr's `/v1` API (4 or 5 loads, a 3 s pause between them). The release slug is derived from the app's own release links, never from the sidebars. The variant chosen is APK before bundle, `arm64-v8a` or universal, `nodpi` first. The APK is then fetched with **curl**, using FlareSolverr's cookies and user agent: with identical headers Cloudflare answers Bun's `fetch` with 403 and curl with the file, so it tells clients apart by their TLS handshake. No borrowed credentials.
+2. **APKPure's app API.** One GET to `api.pureapk.com/m/v3/cms/app_version` with the app's headers, The reply is protobuf; each download link carries `c=…|base64(vn=<version>&vc=<code>&t=<apk|xapk>&s=<size>)`, so the exact version is picked from that and the download is checked against its size. Returns an APK or XAPK. "Version not listed" is a typed error, not a silent empty result.
 3. **archive.org (j-hc's `jhc-apks`).** A directory listing and a download. Only for apps the config lists it for.
 
 If every source fails, the build fails for that app and the report job opens an issue (see "Alerts").
@@ -385,7 +384,7 @@ Each workflow job calls one subcommand, and the same subcommands run locally.
 
 **Phase 1: scaffold, repo and config.** In progress since 2026-11-11: repo `teyd/auto-apk` is public and `scripts/setup-repo.sh` has been applied (without Pullfrog). Renovate app installed; Grok connected to Pullfrog. Remaining: install the Pullfrog app on the repo, the Infisical project and identity. Bun project, `@effect/tsgo`, oxlint, oxfmt, `Config.ts`, generated schema, `auto-apk.json` for 8 apps. Then secrets: the Infisical project, its one machine identity, `.env.schema`. Then the repository: `scripts/setup-repo.sh`, the `main` ruleset, community files, `renovate.json`, `ci.yml`. Then review: install the Pullfrog app, connect the Grok and Claude subscriptions, add `pullfrog.yml` and `AGENTS.md`, and check a first review on a test pull request. From here on every change goes through a pull request.
 
-**Phase 2: build path.** `GitHub`, `Morphe`, `Sources`, `Verify`. Done when `auto-apk build --app x` produces an unsigned patched APK locally and all 8 build, or the gap is named per app.
+**Phase 2: build path.** `Process`, `GitHub`, `Morphe`, `Verify`, `Sources`, `Build` and `auto-apk build`. Bundles are read with `fflate` (pure JS, no `unzip` binary). Done when `auto-apk build --app x` produces an unsigned patched APK locally and all 8 build, or the gap is named per app.
 
 **Phase 3: release path.** `Release.ts`, `build.yml` with the three jobs, attestations, Obtainium entries.
 
