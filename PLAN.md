@@ -299,7 +299,8 @@ Pins: X, YouTube, Reddit and Twitch from j-hc's published list; Instagram and Ti
 ## Signing and publishing
 
 - One private PKCS12 keystore, never in the repo. Export the one from Morphe Manager and use it; otherwise every existing install must be uninstalled first. Keep an offline copy.
-- One release, tag `latest`. `publish` deletes the patched app's previous asset and uploads the new one. Other assets are not touched.
+- **One release per app build**, tagged like its file (`youtube-21.30.216-p2.2.0-arm64-v8a`); only the latest build per app is kept. Obtainium takes an app's version from its release tag and filters releases by title (`^youtube-`), so a new tag is how a phone sees an update, for that app only, including a patches-only update. A single rolling release cannot work: Obtainium would see one unchanging tag, and its asset-date option uses the newest file in the whole release (checked in Obtainium's source, 2026-11-12).
+- The `latest` release is the index: `manifest.json` and a table linking each app's current release. Order per run: create the new app releases, rewrite the index, then delete each app's previous release and tag.
 - `manifest.json` (per app: app version, patches tag and SHA-256, input hash, APK SHA-256, build time) is the public index and the pipeline's state. The release body is a table generated from it.
 - Build attestations, so anyone can check an APK came from this workflow.
 - The version stays in the filename so Obtainium has something to compare. One Obtainium entry per app with an asset regex such as `^youtube-`.
