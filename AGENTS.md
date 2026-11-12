@@ -79,6 +79,9 @@ Conventional commit titles. Every change goes through a pull request; `ci` must 
   `scripts/create-signing-key.sh`, or permissions and secrets.
 - Everything else merges as soon as `ci` is green. Its review lands afterwards;
   fix the findings in a follow-up pull request.
+- Renovate pull requests merge on green `ci` whether or not they touch a workflow:
+  Pullfrog does not review PRs opened by bots, so the review gate cannot apply.
+  `actionlint` and `zizmor` in `ci` are the check for those.
 - Re-review is off. After addressing findings, push the fixes as one batch and
   comment `@pullfrog review` once.
 - Batch fixes into one push instead of several small commits.
