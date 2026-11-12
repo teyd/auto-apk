@@ -8,6 +8,9 @@ import * as GitHub from "./GitHub.ts"
 
 export const LABEL = "build-failure"
 export const issueTitle = (app: string) => `Build failing: ${app}`
+/** One issue for a publish failure, instead of one per app it affected. */
+export const PUBLISH_TITLE = "Publish failing"
+export const PUBLISH_REASON = "built, but signing or publishing failed (see the publish job)"
 
 const MARKER = "auto-apk:reason="
 
@@ -124,10 +127,41 @@ export const markUnpublished = (
       ? {
           ...r,
           status: "failed" as const,
-          reason: "built, but signing or publishing failed (see the publish job)",
+          reason: PUBLISH_REASON,
         }
       : r,
   )
+
+export const publishFailed = (result: string | undefined): boolean =>
+  result === "failure" || result === "cancelled"
+
+/** Retire the issue only on a real success; skipped or unknown leaves it open. */
+export const publishSucceeded = (result: string | undefined): boolean => result === "success"
+
+const publishSignature = (records: ReadonlyArray<BuildRecord>): string => {
+  const hasher = new Bun.CryptoHasher("sha256")
+  hasher.update(JSON.stringify(records.map((r) => `${r.app}@${r.version ?? "?"}`).toSorted()))
+  return hasher.digest("hex").slice(0, 16)
+}
+
+export const publishIssueBody = (records: ReadonlyArray<BuildRecord>, runUrl: string): string => {
+  const rows = records.map(
+    (r) =>
+      `| ${r.app} | ${r.version ?? "?"} | ${r.appliedPatches ?? "?"}/${r.expectedPatches ?? "?"} |`,
+  )
+  return [
+    `Signing or publishing failed in [this run](${runUrl}); these apps were built but are not in the release, so their previous release (if any) is still what is published.`,
+    "",
+    "| App | Version | Patches |",
+    "|---|---|---|",
+    ...rows,
+    "",
+    "The build log is the publish job's; the usual causes are Infisical, the keystore, or GitHub's release API.",
+    "This issue closes itself when a publish succeeds.",
+    "",
+    `<!-- ${MARKER}publish-${publishSignature(records)} -->`,
+  ].join("\n")
+}
 
 export interface ReportAction {
   readonly app: string
@@ -137,10 +171,59 @@ export interface ReportAction {
 
 export const report = Effect.fn("report")(function* (
   repo: string,
-  records: ReadonlyArray<BuildRecord>,
+  allRecords: ReadonlyArray<BuildRecord>,
   runUrl: string,
+  options: { readonly publishResult?: string | undefined } = {},
 ) {
   const actions: Array<ReportAction> = []
+  const failed = publishFailed(options.publishResult)
+  const unpublished = allRecords.filter((r) => r.status === "failed" && r.reason === PUBLISH_REASON)
+  const existingPublish = yield* GitHub.findOpenIssue(repo, PUBLISH_TITLE, LABEL)
+
+  if (failed && unpublished.length > 0) {
+    // One issue for the publish failure; these apps get no per-app issue.
+    const body = publishIssueBody(unpublished, runUrl)
+    const sig = `${MARKER}publish-${publishSignature(unpublished)}`
+    if (Option.isNone(existingPublish)) {
+      const created = yield* GitHub.createIssue(repo, PUBLISH_TITLE, body, [LABEL])
+      for (const r of unpublished)
+        actions.push({ app: r.app, action: "opened", issue: created.html_url })
+    } else {
+      const texts = yield* GitHub.issueTexts(repo, existingPublish.value)
+      const seen = texts.some((t) => t.includes(sig))
+      if (!seen) yield* GitHub.commentIssue(repo, existingPublish.value.number, body)
+      for (const r of unpublished) {
+        actions.push({
+          app: r.app,
+          action: seen ? "unchanged" : "commented",
+          issue: existingPublish.value.html_url,
+        })
+      }
+    }
+    // These apps did build. Retire any per-app issue from an earlier failure, so it
+    // does not keep describing a build that has since succeeded.
+    for (const record of unpublished) {
+      const perApp = yield* GitHub.findOpenIssue(repo, issueTitle(record.app), LABEL)
+      if (Option.isNone(perApp)) continue
+      yield* GitHub.commentIssue(
+        repo,
+        perApp.value.number,
+        `Built ${record.version} in [this run](${runUrl}); publishing failed and is tracked in the publish issue.`,
+      )
+      yield* GitHub.closeIssue(repo, perApp.value.number)
+    }
+  } else if (publishSucceeded(options.publishResult) && Option.isSome(existingPublish)) {
+    // A publish went through: retire the publish issue.
+    yield* GitHub.commentIssue(
+      repo,
+      existingPublish.value.number,
+      `Publishing succeeded in [this run](${runUrl}).`,
+    )
+    yield* GitHub.closeIssue(repo, existingPublish.value.number)
+    actions.push({ app: "publish", action: "closed", issue: existingPublish.value.html_url })
+  }
+
+  const records = failed ? allRecords.filter((r) => !unpublished.includes(r)) : allRecords
   for (const record of records) {
     const existing = yield* GitHub.findOpenIssue(repo, issueTitle(record.app), LABEL)
     if (record.status === "built") {

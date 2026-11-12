@@ -211,4 +211,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           APPS: ${{ needs.plan.outputs.apps }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
         run: bun src/main.ts report --records records --apps "$APPS" --published published/published.json
