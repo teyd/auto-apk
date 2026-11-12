@@ -67,6 +67,25 @@ export const appReleaseNotes = (
     `- Provenance: \`gh attestation verify <file>.apk --repo ${config.publish.repo}\``,
   ].join("\n")
 
+/** Create the index release when it does not exist. */
+const ensureIndex = (repo: string, tag: string) =>
+  Effect.gen(function* () {
+    if (Option.isSome(yield* GitHub.findRelease(repo, tag))) return
+    yield* Effect.logWarning(`index release ${tag} is missing; recreating it`)
+    yield* gh([
+      "release",
+      "create",
+      tag,
+      "-R",
+      repo,
+      "--title",
+      "Latest builds",
+      "--notes",
+      "Preparing…",
+      "--latest",
+    ])
+  })
+
 export const publish = Effect.fn("publish")(function* (
   config: Config,
   records: ReadonlyArray<BuildRecord>,
@@ -80,20 +99,7 @@ export const publish = Effect.fn("publish")(function* (
   // Nothing signed: leave every release, the manifest and the notes as they are.
   if (signed.apks.length === 0) return []
 
-  if (Option.isNone(yield* GitHub.findRelease(repo, indexTag))) {
-    yield* gh([
-      "release",
-      "create",
-      indexTag,
-      "-R",
-      repo,
-      "--title",
-      "Latest builds",
-      "--notes",
-      "Preparing…",
-      "--latest",
-    ])
-  }
+  yield* ensureIndex(repo, indexTag)
   const manifest = yield* readManifest(repo, indexTag)
   const apps = { ...manifest.apps }
   const published: Array<string> = []
@@ -149,6 +155,9 @@ export const publish = Effect.fn("publish")(function* (
   if (published.length === 0) return []
 
   // 2. Point the index at the new releases, and keep it GitHub's "Latest release".
+  //    Checked again here: on 2026-11-12 the index vanished while step 1 ran (cause
+  //    unknown; GitHub does not log release deletions). Recreating it heals that.
+  yield* ensureIndex(repo, indexTag)
   const next: Manifest = { manifestVersion: 1, apps }
   const manifestFile = path.join(dir, MANIFEST_ASSET)
   yield* fs.writeFileString(manifestFile, `${JSON.stringify(next, null, 2)}\n`)
