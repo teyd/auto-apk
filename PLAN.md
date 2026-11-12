@@ -4,7 +4,7 @@ Which apps are built is configuration (`auto-apk.json`). The 8 named in this pla
 
 ## Goal
 
-A scheduled GitHub Actions pipeline that, for each app, detects a new patch release, asks Morphe which app version that release supports, downloads a genuine stock APK of exactly that version, patches it with the Morphe CLI, signs it with one persistent key, and replaces that app's APK in one rolling public release.
+A scheduled GitHub Actions pipeline that, for each app, detects a new patch release, asks Morphe which app version that release supports, downloads a genuine stock APK of exactly that version, patches it with the Morphe CLI, signs it with one persistent key, and publishes it as that app's own release (only the latest build per app is kept); the `latest` release is the index.
 
 The design rule: Morphe will change again, so everything Morphe-specific lives in one config block and one source file.
 
@@ -17,7 +17,7 @@ The design rule: Morphe will change again, so everything Morphe-specific lives i
 | Target version | Asked from the Morphe CLI (`list-versions`), not parsed from each bundle's own JSON. Works for any bundle. |
 | Authenticity | Every stock APK and split must match a pinned signing certificate before patching. |
 | Signing | Patch with `--unsigned`; sign in a separate job that alone holds the keystore. Reuse the Morphe Manager keystore so existing installs update in place. |
-| Publishing | Public repo, one release tagged `latest`, one asset per app; only the patched app's asset is replaced. |
+| Publishing | Public repo. One release per app build, tagged like its file; only the latest build per app is kept. `latest` is the index (`manifest.json` and the table). Obtainium installs via the README buttons. |
 | Alerts | A failed run is red. A failing app also gets one GitHub issue, opened by the workflow, updated instead of duplicated, and closed when the app builds again. No ntfy, no Discord webhook. |
 | Experimental app versions | Not used, matching Morphe's own default. |
 | TikTok | `com.zhiliaoapp.musically` only; the `trill` package is not needed. |
