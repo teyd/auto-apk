@@ -240,7 +240,12 @@ const reportCmd = Command.make(
         )
         records = markUnpublished(built, new Set(published))
       }
-      const actions = yield* report(repo, records, runUrl)
+      // The publish job's own result decides whether one "Publish failing" issue is
+      // opened instead of one per affected app; the rerun that works closes it.
+      const publishResult = Option.getOrUndefined(
+        yield* EnvConfig.option(EnvConfig.String("PUBLISH_RESULT")),
+      )
+      const actions = yield* report(repo, records, runUrl, { publishResult })
       const text = summary(records, actions)
       yield* Console.log(text)
       yield* appendToEnvFile("GITHUB_STEP_SUMMARY", `## Builds\n\n${text}`)

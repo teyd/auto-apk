@@ -5,7 +5,16 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { BuildRecord } from "../src/Build.ts"
-import { fingerprint, issueBody, missingRecord, readRecords } from "../src/Report.ts"
+import {
+  PUBLISH_REASON,
+  PUBLISH_TITLE,
+  fingerprint,
+  issueBody,
+  markUnpublished,
+  missingRecord,
+  publishIssueBody,
+  readRecords,
+} from "../src/Report.ts"
 
 const failed = (error: string, pinMismatch = false): BuildRecord => ({
   app: "youtube",
@@ -99,5 +108,34 @@ describe("readRecords", () => {
 
   test("a missing folder means every app failed", async () => {
     expect((await read(join(tmpdir(), "does-not-exist-auto-apk"), ["x"]))[0]?.status).toBe("failed")
+  })
+})
+
+describe("publish failures", () => {
+  test("collapse into one issue listing every unaffected install", () => {
+    const records = [built("youtube"), built("x")].map((r) => ({
+      ...r,
+      status: "failed" as const,
+      reason: PUBLISH_REASON,
+      version: "21.30.216",
+      appliedPatches: 46,
+      expectedPatches: 46,
+    }))
+    const body = publishIssueBody(records, "https://run")
+    expect(body).toContain("| youtube | 21.30.216 | 46/46 |")
+    expect(body).toContain("| x | 21.30.216 | 46/46 |")
+    expect(body).toContain("auto-apk:reason=publish-")
+    expect(PUBLISH_TITLE).toBe("Publish failing")
+  })
+
+  test("markUnpublished tags exactly the built-but-unpublished apps with the publish reason", () => {
+    const records = [
+      built("youtube"),
+      built("x"),
+      { ...built("twitch"), status: "failed" as const, reason: "no source" },
+    ]
+    const marked = markUnpublished(records, new Set(["youtube"]))
+    expect(marked.find((r) => r.app === "x")?.reason).toBe(PUBLISH_REASON)
+    expect(marked.find((r) => r.app === "twitch")?.reason).toBe("no source")
   })
 })
