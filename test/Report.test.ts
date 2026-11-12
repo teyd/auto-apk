@@ -12,7 +12,9 @@ import {
   issueBody,
   markUnpublished,
   missingRecord,
+  publishFailed,
   publishIssueBody,
+  publishSucceeded,
   readRecords,
 } from "../src/Report.ts"
 
@@ -137,5 +139,22 @@ describe("publish failures", () => {
     const marked = markUnpublished(records, new Set(["youtube"]))
     expect(marked.find((r) => r.app === "x")?.reason).toBe(PUBLISH_REASON)
     expect(marked.find((r) => r.app === "twitch")?.reason).toBe("no source")
+  })
+})
+
+describe("when to retire the publish issue", () => {
+  test("only a real success closes it", () => {
+    expect(publishSucceeded("success")).toBe(true)
+    expect(publishSucceeded("skipped")).toBe(false)
+    expect(publishSucceeded(undefined)).toBe(false)
+    expect(publishSucceeded("failure")).toBe(false)
+  })
+
+  test("only failure or cancellation counts as a publish failure", () => {
+    expect(publishFailed("failure")).toBe(true)
+    expect(publishFailed("cancelled")).toBe(true)
+    expect(publishFailed("skipped")).toBe(false)
+    expect(publishFailed(undefined)).toBe(false)
+    expect(publishFailed("success")).toBe(false)
   })
 })
