@@ -4,7 +4,7 @@ Which apps are built is configuration (`auto-apk.json`). The 8 named in this pla
 
 ## Goal
 
-A scheduled GitHub Actions pipeline that, for each app, detects a new patch release, asks Morphe which app version that release supports, downloads a genuine stock APK of exactly that version, patches it with the Morphe CLI, signs it with one persistent key, and replaces that app's APK in one rolling public release.
+A scheduled GitHub Actions pipeline that, for each app, detects a new patch release, asks Morphe which app version that release supports, downloads a genuine stock APK of exactly that version, patches it with the Morphe CLI, signs it with one persistent key, and publishes it as that app's own release (only the latest build per app is kept); the `latest` release is the index.
 
 The design rule: Morphe will change again, so everything Morphe-specific lives in one config block and one source file.
 
@@ -17,7 +17,7 @@ The design rule: Morphe will change again, so everything Morphe-specific lives i
 | Target version | Asked from the Morphe CLI (`list-versions`), not parsed from each bundle's own JSON. Works for any bundle. |
 | Authenticity | Every stock APK and split must match a pinned signing certificate before patching. |
 | Signing | Patch with `--unsigned`; sign in a separate job that alone holds the keystore. Reuse the Morphe Manager keystore so existing installs update in place. |
-| Publishing | Public repo, one release tagged `latest`, one asset per app; only the patched app's asset is replaced. |
+| Publishing | Public repo. One release per app build, tagged like its file; only the latest build per app is kept. `latest` is the index (`manifest.json` and the table). Obtainium installs via the README buttons. |
 | Alerts | A failed run is red. A failing app also gets one GitHub issue, opened by the workflow, updated instead of duplicated, and closed when the app builds again. No ntfy, no Discord webhook. |
 | Experimental app versions | Not used, matching Morphe's own default. |
 | TikTok | `com.zhiliaoapp.musically` only; the `trill` package is not needed. |
@@ -301,7 +301,8 @@ Pins: X, YouTube, Reddit and Twitch from j-hc's published list; Instagram and Ti
 ## Signing and publishing
 
 - One private PKCS12 keystore, never in the repo. Export the one from Morphe Manager and use it; otherwise every existing install must be uninstalled first. Keep an offline copy.
-- One release, tag `latest`. `publish` deletes the patched app's previous asset and uploads the new one. Other assets are not touched.
+- **One release per app build**, tagged like its file (`youtube-21.30.216-p2.2.0-arm64-v8a`); only the latest build per app is kept. Obtainium takes an app's version from its release tag and filters releases by title (`^youtube-`), so a new tag is how a phone sees an update, for that app only, including a patches-only update. A single rolling release cannot work: Obtainium would see one unchanging tag, and its asset-date option uses the newest file in the whole release (checked in Obtainium's source, 2026-11-12).
+- The `latest` release is the index: `manifest.json` and a table linking each app's current release. Order per run: create the new app releases, rewrite the index, then delete each app's previous release and tag.
 - `manifest.json` (per app: app version, patches tag and SHA-256, input hash, APK SHA-256, build time) is the public index and the pipeline's state. The release body is a table generated from it.
 - Build attestations, so anyone can check an APK came from this workflow.
 - The version stays in the filename so Obtainium has something to compare. One Obtainium entry per app with an asset regex such as `^youtube-`.

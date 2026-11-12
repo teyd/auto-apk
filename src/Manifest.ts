@@ -1,6 +1,7 @@
 /**
- * `manifest.json` in the release: the public index of what was built, and the
- * pipeline's state. `plan` reads it to decide what to rebuild; `publish` writes it.
+ * `manifest.json` in the index release (`publish.tag`): the public index of what
+ * was built, and the pipeline's state. `plan` reads it to decide what to rebuild;
+ * `release` writes it.
  */
 import { Effect, Option, Schema } from "effect"
 import * as GitHub from "./GitHub.ts"
@@ -12,6 +13,8 @@ export const ManifestEntry = Schema.Struct({
   /** Hash of everything that decides the output; see `inputKey` in Plan.ts. */
   inputKey: Schema.String,
   asset: Schema.String,
+  /** Tag of the app's own release holding `asset`. Absent for entries written before per-app releases. */
+  release: Schema.optionalKey(Schema.String),
   apkSha256: Schema.String,
   builtAt: Schema.String,
 })
